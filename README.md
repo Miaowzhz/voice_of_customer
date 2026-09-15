@@ -25,6 +25,15 @@ python scripts/evaluate_classifier.py --mode keyword
 
 配置 `OPENAI_API_KEY` 后，将 `--mode` 改为 `llm`，即可使用 LangChain 结构化模型对 50 条人工标注集进行一级分类、子类和严重程度评估。
 
+周报和压力测试：
+
+```bash
+python scripts/run_weekly_report.py --database artifacts/weekly_demo.db --end-date 2026-09-14 --seed-mock
+python scripts/stress_test.py --copies 20
+```
+
+周报会生成周期内的反馈类型分布、重复投诉率、Top 问题和饼图；压力测试将 50 条 mock 数据扩展为 1000 条，验证清洗和聚合吞吐量。
+
 ## 启动飞书机器人接入层
 
 ```bash

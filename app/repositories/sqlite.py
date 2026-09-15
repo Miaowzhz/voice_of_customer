@@ -169,5 +169,23 @@ class SQLiteRepository:
     def fetch_run(self, run_id: str) -> sqlite3.Row | None:
         return self.connection.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
 
+    def list_feedback(self, start_at: str | None = None, end_at: str | None = None) -> list[sqlite3.Row]:
+        query = "SELECT * FROM feedback"
+        params: list[str] = []
+        conditions = []
+        if start_at:
+            conditions.append("created_at >= ?")
+            params.append(start_at)
+        if end_at:
+            conditions.append("created_at < ?")
+            params.append(end_at)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY created_at, feedback_id"
+        return list(self.connection.execute(query, params).fetchall())
+
+    def list_issues(self) -> list[sqlite3.Row]:
+        return list(self.connection.execute("SELECT * FROM issues ORDER BY feedback_count DESC, issue_key").fetchall())
+
     def close(self) -> None:
         self.connection.close()
