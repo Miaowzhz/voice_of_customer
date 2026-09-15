@@ -9,6 +9,7 @@ class RunState(TypedDict, total=False):
     run_id: str
     source_type: Literal["single", "batch"]
     source_ref: str
+    notification_target: dict[str, str]
     status: Literal["received", "running", "waiting_review", "completed", "failed"]
     input_rows: list[dict[str, Any]]
     records: list[dict[str, Any]]

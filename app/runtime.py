@@ -43,6 +43,7 @@ class RunService:
     repository: Any
     graph_factory: GraphFactory
     file_downloader: FileDownloader | None = None
+    feishu_client: Any | None = None
     executor: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=2))
     futures: dict[str, Future] = field(default_factory=dict)
 
@@ -67,6 +68,12 @@ class RunService:
             source_ref = event.get("message_id", "")
 
         state = initial_state(run_id, rows, source_type=source_type, source_ref=source_ref)
+        target = event.get("chat_id") or event.get("sender_id")
+        if target:
+            state["notification_target"] = {
+                "receive_id": target,
+                "receive_id_type": "chat_id" if event.get("chat_id") else "open_id",
+            }
         self.repository.upsert_run(state)
         self.futures[run_id] = self.executor.submit(self._execute, state)
         return run_id
@@ -79,7 +86,33 @@ class RunService:
         self.repository.upsert_run(result)
         self.repository.upsert_feedback(result.get("records", []), result.get("classifications", []))
         self.repository.upsert_issues(result.get("issue_candidates", []), result["run_id"])
+        self._notify_feishu(result)
         return result
+
+    def _notify_feishu(self, result: dict[str, Any]) -> None:
+        if self.feishu_client is None:
+            return
+        target = result.get("notification_target", {})
+        receive_id = target.get("receive_id")
+        if not receive_id:
+            return
+        counters = result.get("counters", {})
+        status = result.get("status", "unknown")
+        if status == "completed":
+            text = (
+                f"VOC 分析完成\nrun_id：{result.get('run_id', '')}\n"
+                f"反馈：{counters.get('input_count', 0)} 条，分类成功：{counters.get('classified_count', 0)} 条\n"
+                f"待复核：{counters.get('review_count', 0)} 条，Issue：{len(result.get('issue_candidates', []))} 个"
+            )
+        elif status == "failed":
+            text = f"VOC 分析失败\nrun_id：{result.get('run_id', '')}\n请查看运行日志。"
+        else:
+            text = f"VOC 分析状态：{status}\nrun_id：{result.get('run_id', '')}"
+        self.feishu_client.send_text(
+            receive_id,
+            text,
+            receive_id_type=target.get("receive_id_type", "open_id"),
+        )
 
     def wait(self, run_id: str, timeout: float | None = None) -> dict[str, Any]:
         future = self.futures[run_id]

@@ -33,6 +33,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 将飞书事件订阅地址配置为 `/webhooks/feishu`。当前接入层已经支持 URL challenge、文本反馈、文件事件、运行指令识别、事件去重和健康检查；`FeishuClient` 已封装租户令牌、消息发送、文件下载和多维表记录 Upsert，配置凭证后即可连接真实飞书环境。
 
+真实环境启动前，复制 [.env.example](./.env.example) 并配置 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_VERIFICATION_TOKEN` 和 `OPENAI_API_KEY`。未配置飞书凭证时，文本事件仍可用于本地接入测试，但文件下载和出站消息不会调用外部 API。
+
 ## 主要解决的痛点
 
 ### 1. 客户反馈入口分散

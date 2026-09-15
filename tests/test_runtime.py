@@ -46,6 +46,35 @@ class RuntimeTests(unittest.TestCase):
         service.close()
         repository.close()
 
+    def test_completion_is_sent_to_original_chat(self) -> None:
+        repository = SQLiteRepository(":memory:")
+
+        class FakeFeishu:
+            def __init__(self):
+                self.messages = []
+
+            def send_text(self, receive_id, text, *, receive_id_type):
+                self.messages.append((receive_id, text, receive_id_type))
+
+        feishu = FakeFeishu()
+        service = RunService(
+            repository=repository,
+            graph_factory=lambda: build_graph(classifier=classifier),
+            feishu_client=feishu,
+        )
+        event = {
+            "event_id": "evt-notify", "message_id": "om-notify", "chat_id": "oc-notify",
+            "text": "反馈 SKU=锅A 内容=锅底有点粘",
+        }
+        run_id = service.submit_event(event)
+        result = service.wait(run_id, timeout=3)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(len(feishu.messages), 1)
+        self.assertEqual(feishu.messages[0][0], "oc-notify")
+        self.assertEqual(feishu.messages[0][2], "chat_id")
+        service.close()
+        repository.close()
+
     def test_file_event_uses_downloader(self) -> None:
         repository = SQLiteRepository(":memory:")
 
