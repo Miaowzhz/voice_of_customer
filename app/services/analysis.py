@@ -45,43 +45,36 @@ def build_analysis_report(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def format_analysis_report(report: dict[str, Any]) -> str:
-    """输出飞书文本摘要，限制证据长度以保持报告可读。"""
+    """输出适合飞书阅读的精简摘要，详细数据仍保存在本地报告中。"""
 
+    distribution = {item["grade"]: item for item in report.get("grade_distribution", [])}
+    grade_text = "，".join(
+        f"{grade}评 {distribution.get(grade, {}).get('count', 0)} 条"
+        f"（{distribution.get(grade, {}).get('ratio', 0):.1f}%）"
+        for grade in ("好", "中", "差")
+    )
+    summary = (
+        f"共分析 {report['classified_count']} 条反馈，{grade_text}。"
+        f"待复核 {report['review_count']} 条。"
+    )
     lines = [
         "✅ 产品反馈分析完成",
         f"产品：{report['product']}",
         "",
-        "结果概览",
-        f"• 本次反馈：{report['input_count']} 条",
-        f"• 已完成分类：{report['classified_count']} 条",
-        f"• 待人工复核：{report['review_count']} 条",
-        f"• 处理失败：{report['failure_count']} 条",
-        f"• 重复记录：{report['duplicate_count']} 条",
-        "",
-        "反馈类型分布",
+        "简短总结",
+        summary,
     ]
-    for item in report["category_distribution"]:
-        lines.append(f"• {item['category']}：{item['count']} 条，占比 {item['ratio']:.1f}%")
-    sentiments = report["sentiment_counts"]
-    lines.extend(["", "情感分布：" + "，".join(f"{label} {count} 条" for label, count in sentiments.items()), "", "主要问题与建议"])
-    for i, item in enumerate(report["top_issues"][:3], 1):
-        evidence = str(item.get("evidence", [""])[0])[:100]
-        lines.extend([
-            f"{i}. {item['subcategory']}（{item['count']} 条）",
-            f"典型反馈：{evidence}",
-            f"处理建议：{item['suggested_action'][:180]}",
-            f"建议负责人：{item['suggested_owner']}",
-        ])
-    if report.get("grade_distribution"):
-        lines.extend(["", "体验等级分布"])
-        lines.extend(f"• {item['grade']}评：{item['count']} 条，占比 {item['ratio']:.1f}%" for item in report["grade_distribution"])
-    for grade, label in (("好", "好评原因"), ("中", "中评改进"), ("差", "差评原因")):
-        analysis = report.get("grade_analyses", {}).get(grade, {})
-        if analysis:
-            lines.extend(["", label, f"{analysis.get('summary', '')}"])
-            lines.extend(f"• {item}" for item in analysis.get("reasons", [])[:3])
-            lines.extend(f"• 建议：{item}" for item in analysis.get("improvements", [])[:3])
-    lines.extend(["", f"统计口径：{report['statistics_note']}", f"运行编号：{report['run_id']}", "客户体验等级饼图和好评词云将在后续消息发送。"])
+    analyses = report.get("grade_analyses", {})
+    for grade, label, fields in (
+        ("好", "好评原因", ("reasons",)),
+        ("中", "中评改进", ("improvements",)),
+        ("差", "差评原因", ("reasons",)),
+    ):
+        analysis = analyses.get(grade, {})
+        lines.extend(["", label, analysis.get("summary", f"暂无{label}分析。")])
+        items = [item for field in fields for item in analysis.get(field, [])[:3]]
+        lines.extend(f"• {item}" for item in items)
+    lines.extend(["", f"运行编号：{report['run_id']}", "等级饼图和好评词云见随后发送的图片。"])
     return "\n".join(lines)
 
 

@@ -154,7 +154,9 @@ class BatchRuntimeTests(unittest.TestCase):
         self.assertEqual(self.repository.fetch_report(run_id)["delivery_status"], "sent")
         sent_images = [item for item in self.feishu.images if item[0] == "chat1"]
         self.assertEqual(len(sent_images), 2)
-        self.assertIn("主要问题与建议", self.feishu.messages[-1][1])
+        self.assertIn("好评原因", self.feishu.messages[-1][1])
+        self.assertIn("中评改进", self.feishu.messages[-1][1])
+        self.assertIn("差评原因", self.feishu.messages[-1][1])
         self.assertIn("✅ 已接收产品反馈", self.feishu.messages[0][1])
         self.assertIn("反馈数量：5 条", self.feishu.messages[0][1])
         self.assertEqual(self.service.submit_event(event), run_id)
