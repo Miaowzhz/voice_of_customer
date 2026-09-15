@@ -17,6 +17,14 @@ python scripts/seed_mock.py
 
 脚本会完成 mock 数据清洗、基准标签合并、类型统计，并在 `artifacts/mock_run/` 生成清洗结果、统计 JSON、运行日志和反馈类型饼图。当前脚本使用人工标注基准集代替 LLM 分类，便于先验证数据链路和图表口径。
 
+分类评估可先离线运行规则预测器：
+
+```bash
+python scripts/evaluate_classifier.py --mode keyword
+```
+
+配置 `OPENAI_API_KEY` 后，将 `--mode` 改为 `llm`，即可使用 LangChain 结构化模型对 50 条人工标注集进行一级分类、子类和严重程度评估。
+
 ## 主要解决的痛点
 
 ### 1. 客户反馈入口分散
