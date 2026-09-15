@@ -112,8 +112,10 @@ def _aggregate_node(state: RunState) -> dict[str, Any]:
     }
 
 
-def _finalize_node(state: RunState) -> dict[str, Any]:
+def _finalize_node(state: RunState, repository: Any | None = None) -> dict[str, Any]:
     status = "completed" if state.get("status") != "failed" else "failed"
+    if repository is not None:
+        repository.upsert_run({**state, "status": status})
     return {"status": status}
 
 
@@ -155,7 +157,7 @@ def build_graph(
     graph.add_node("build_issues", _build_issues_node)
     graph.add_node("persist", lambda state: _persist_node(state, repository))
     graph.add_node("notify", lambda state: _notify_node(state, notifier))
-    graph.add_node("finalize", _finalize_node)
+    graph.add_node("finalize", lambda state: _finalize_node(state, repository))
     graph.add_edge(START, "clean_records")
     graph.add_edge("clean_records", "classify")
     graph.add_conditional_edges(

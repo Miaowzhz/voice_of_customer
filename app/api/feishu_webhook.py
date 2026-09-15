@@ -93,18 +93,28 @@ class FeishuEventHandler:
         return {"code": 0, "accepted": False, "reason": "unsupported message"}
 
 
-def create_app(handler: FeishuEventHandler | None = None, repository: Any | None = None) -> FastAPI:
+def create_app(
+    handler: FeishuEventHandler | None = None,
+    repository: Any | None = None,
+    run_service: Any | None = None,
+) -> FastAPI:
     app = FastAPI(title="VOC Agent API", version="0.1.0")
     event_handler = handler or FeishuEventHandler(
         verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN", "")
     )
+    if run_service is not None:
+        if event_handler.on_feedback is None:
+            event_handler.on_feedback = run_service.submit_event
 
     @app.post("/webhooks/feishu")
     async def feishu_webhook(
         payload: dict[str, Any],
         x_feishu_verification_token: str | None = Header(default=None),
     ) -> dict[str, Any]:
-        return event_handler.handle(payload, x_feishu_verification_token)
+        try:
+            return event_handler.handle(payload, x_feishu_verification_token)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
