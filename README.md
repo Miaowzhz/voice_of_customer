@@ -4,6 +4,8 @@
 
 示例数据：[mock_feedback_50.csv](./mock_feedback_50.csv)。文件包含 50 条脱敏模拟反馈，字段与批量导入契约一致，可直接用于测试分类、趋势统计和反馈类型饼图；其中刻意加入了某 SKU 近期“涂层粘锅”反馈集中上升的演示事件。
 
+第 1 版分类规则见 [config/taxonomy.yaml](./config/taxonomy.yaml)，人工标注基准集见 [data/benchmark_50.csv](./data/benchmark_50.csv)。
+
 ## 主要解决的痛点
 
 ### 1. 客户反馈入口分散

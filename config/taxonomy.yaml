@@ -1,0 +1,94 @@
+version: "1.0.0"
+effective_date: "2026-09-15"
+maintainer: "VOC 项目组"
+description: "厨具客户反馈首版问题分类体系。category 用于统计和路由，subcategory 用于问题聚合。"
+global_rules:
+  confidence_threshold: 0.75
+  unknown_category: "其他/待人工确认"
+  human_review_when:
+    - "confidence < 0.75"
+    - "涉及安全事故、伤害、赔付或法律风险"
+    - "必填字段缺失或枚举值非法"
+    - "SKU 无法确认且会影响问题归属"
+  pii_output_rule: "证据只保留与问题直接相关的脱敏原文，不回显手机号、地址、姓名和完整订单号。"
+
+categories:
+  - id: product_quality
+    name: "产品质量"
+    definition: "产品本体存在缺陷、耐久性异常或影响安全/正常使用的质量问题。"
+    subcategories: ["涂层", "开裂", "变形", "漏水", "异味", "结构件松动", "其他质量问题"]
+    keywords: ["粘锅", "涂层", "脱落", "起泡", "裂纹", "变形", "漏水", "异味", "松动", "锈"]
+    counterexamples: ["因钢丝球或铁铲造成的正常使用划痕", "单纯询问清洁方法", "运输造成的外包装破损"]
+    default_owner: "品控"
+
+  - id: size_spec
+    name: "尺寸与规格"
+    definition: "尺寸、重量、容量、结构尺寸或规格参数与需求或页面信息不符。"
+    subcategories: ["尺寸不符", "重量不符", "容量不符", "结构尺寸不合适"]
+    keywords: ["厘米", "尺寸", "重量", "容量", "太大", "太小", "放不进", "不匹配"]
+    counterexamples: ["页面明确标注尺寸但用户误读", "电磁炉无法识别", "锅体因运输变形"]
+    default_owner: "商品"
+
+  - id: function_compatibility
+    name: "功能/兼容性"
+    definition: "产品功能异常，或与电磁炉、燃气灶、烤箱等设备不兼容。"
+    subcategories: ["电磁炉兼容", "燃气灶兼容", "烤箱兼容", "加热异常", "容量/功能表现"]
+    keywords: ["电磁炉", "燃气灶", "烤箱", "加热", "识别不到", "受热不均", "不能用"]
+    counterexamples: ["仅询问产品尺寸", "优惠券不能使用", "锅盖或锅柄的物理损坏"]
+    default_owner: "商品/品控"
+
+  - id: packaging_logistics
+    name: "包装与物流损坏"
+    definition: "发货、运输、签收或包装保护导致的破损、丢失或异常。"
+    subcategories: ["外包装破损", "产品运输损坏", "错投/未收到", "包装污染"]
+    keywords: ["外包装", "快递", "物流", "签收", "破损", "磕碰", "压坏", "没收到"]
+    counterexamples: ["产品出厂即有裂纹且无运输证据", "缺少赠品或配件", "单纯退款进度"]
+    default_owner: "供应链"
+
+  - id: accessory_missing
+    name: "配件/赠品缺失"
+    definition: "订单应包含的配件、赠品或套装部件缺失、错发或未补发。"
+    subcategories: ["配件缺失", "赠品缺失", "套装不完整", "配件错发"]
+    keywords: ["少了", "缺少", "赠品", "配件", "三件套", "补发", "木铲", "硅胶垫"]
+    counterexamples: ["页面未承诺但用户期待的赠品", "运输中遗失的整箱商品", "锅柄松动"]
+    default_owner: "客服/供应链"
+
+  - id: usage_cleaning
+    name: "使用方法与清洁"
+    definition: "用户对使用、保养、清洁方法有疑问，或说明书/指导不足导致使用问题。"
+    subcategories: ["开锅方法", "清洁方式", "保养要求", "说明书不清"]
+    keywords: ["怎么洗", "清洁", "钢丝球", "说明书", "开锅", "洗碗机", "保养"]
+    counterexamples: ["产品本体涂层脱落", "页面承诺与实际功能不符", "客服退款处理慢"]
+    default_owner: "客服/商品"
+
+  - id: description_mismatch
+    name: "商品描述或直播承诺不一致"
+    definition: "商品详情、买家秀、直播口播或客服承诺与实际商品/服务不一致或表达容易误导。"
+    subcategories: ["参数描述不一致", "直播承诺不一致", "展示图与实物不一致", "使用限制未说明"]
+    keywords: ["页面写的是", "直播说", "展示", "描述不准确", "没有提醒", "实际不一样"]
+    counterexamples: ["页面已明确说明但用户未阅读", "单纯尺寸不合适且页面参数准确", "优惠券规则问题"]
+    default_owner: "商品/直播运营"
+
+  - id: pricing_promotion
+    name: "价格、优惠和活动规则"
+    definition: "价格、优惠券、满减、会员权益或活动叠加规则异常、不清晰或与宣传不符。"
+    subcategories: ["优惠券", "满减活动", "会员权益", "价格差异", "规则说明"]
+    keywords: ["优惠券", "满减", "减", "活动", "会员", "叠加", "结算", "规则"]
+    counterexamples: ["退款进度", "商品价格之外的物流费用", "配件缺失"]
+    default_owner: "商品/直播运营"
+
+  - id: aftersales_refund
+    name: "售后服务与退款"
+    definition: "退款、换货、补发、维修、客服响应或售后承诺未按时完成。"
+    subcategories: ["退款进度", "换货流程", "维修处理", "补发进度", "客服响应"]
+    keywords: ["退款", "换货", "维修", "处理中", "客服", "没有进展", "补发", "处理结果"]
+    counterexamples: ["首次发现的产品质量问题本身", "优惠券不能使用", "物流签收异常"]
+    default_owner: "客服主管"
+
+  - id: other_review
+    name: "其他/待人工确认"
+    definition: "无法可靠归入以上类别、信息不足或需要业务人员确认的问题。"
+    subcategories: ["信息不足", "多问题混合", "未知类别"]
+    keywords: ["不清楚", "不知道", "请确认", "其他问题"]
+    counterexamples: ["可以明确归入任一已定义类别的问题"]
+    default_owner: "客服主管"
