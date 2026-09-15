@@ -1,4 +1,4 @@
-"""Feishu bot event parsing and FastAPI webhook application."""
+"""飞书机器人事件解析与 FastAPI 回调应用。"""
 
 from __future__ import annotations
 
@@ -12,11 +12,13 @@ from fastapi import FastAPI, Header, HTTPException
 
 @dataclass
 class EventDeduper:
-    """Process each Feishu event once per process; persist this key in production."""
+    """在单进程内确保每个飞书事件只处理一次；生产环境应持久化该键。"""
 
     seen: set[str] = field(default_factory=set)
 
     def first_seen(self, event_id: str) -> bool:
+        # 飞书可能重复投递事件；先挡住同一进程内的重复任务，生产环境应把
+        # 将事件编号写入共享存储，避免多实例各自重复消费。
         if not event_id:
             return True
         if event_id in self.seen:
@@ -32,12 +34,13 @@ def _message_content(event: dict[str, Any]) -> dict[str, Any]:
         try:
             return json.loads(content)
         except json.JSONDecodeError:
+            # 某些消息类型的内容字段不是 JSON，保留为纯文本，避免丢失反馈。
             return {"text": content}
     return content if isinstance(content, dict) else {}
 
 
 def parse_event(payload: dict[str, Any]) -> dict[str, Any]:
-    """Normalize Feishu callback variants into a small internal event contract."""
+    """将飞书回调的不同格式归一化为内部事件契约。"""
 
     header = payload.get("header", {})
     event = payload.get("event", {})
@@ -74,6 +77,7 @@ class FeishuEventHandler:
     def handle(self, payload: dict[str, Any], header_token: str | None = None) -> dict[str, Any]:
         self.validate(payload, header_token)
         if "challenge" in payload:
+            # 网址验证必须原样回显挑战值，不能进入业务处理流程。
             return {"challenge": payload["challenge"]}
         event = parse_event(payload)
         if not self.deduper.first_seen(event["event_id"]):
@@ -112,6 +116,7 @@ def create_app(
         x_feishu_verification_token: str | None = Header(default=None),
     ) -> dict[str, Any]:
         try:
+            # 回调只负责受理；耗时的文件下载和 LangGraph 执行由运行服务后台处理。
             return event_handler.handle(payload, x_feishu_verification_token)
         except RuntimeError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

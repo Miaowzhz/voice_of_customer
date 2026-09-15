@@ -1,4 +1,4 @@
-"""FastAPI application entry point."""
+"""FastAPI 应用入口。"""
 
 import os
 
@@ -21,7 +21,7 @@ _model = None
 
 
 def llm_classifier(record: dict) -> object:
-    """Lazy model construction keeps API startup independent from credentials."""
+    """延迟构建模型，使 API 启动不依赖模型凭据。"""
 
     global _model
     if _model is None:

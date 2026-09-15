@@ -1,6 +1,6 @@
-"""Generate a weekly report from SQLite.
+"""根据 SQLite 生成周报。
 
-Use --seed-mock for a self-contained local demo run.
+使用 --seed-mock 执行自包含的本地演示。
 """
 
 from __future__ import annotations

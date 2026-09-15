@@ -1,4 +1,4 @@
-"""Build the deterministic VOC LangGraph workflow."""
+"""构建确定性的 VOC LangGraph 工作流。"""
 
 from __future__ import annotations
 
@@ -80,12 +80,14 @@ def _classify_node(state: RunState, classifier: Classifier | None) -> dict[str, 
 
 
 def _review_route(state: RunState) -> str:
+    # 路由决策必须由确定性条件控制，不能让模型决定是否绕过人工复核。
     if state.get("status") == "failed":
         return "failed"
     return "review" if state.get("review_ids") else "continue"
 
 
 def _wait_review_node(state: RunState) -> dict[str, Any]:
+    # 中断会把完整状态写入检查点，人工提交结果后从这里继续执行。
     decision = interrupt({
         "type": "feedback_review",
         "run_id": state["run_id"],
@@ -127,6 +129,7 @@ def _build_issues_node(state: RunState) -> dict[str, Any]:
 def _persist_node(state: RunState, repository: Any | None) -> dict[str, Any]:
     if repository is None:
         return {"counters": {**state.get("counters", {}), "persisted": 0}}
+    # 先写运行和明细，再写问题单；三者都使用幂等更新，支持重复运行。
     repository.upsert_run(state)
     repository.upsert_feedback(state.get("records", []), state.get("classifications", []))
     repository.upsert_issues(state.get("issue_candidates", []), state["run_id"])
@@ -147,7 +150,7 @@ def build_graph(
     repository: Any | None = None,
     notifier: Notifier | None = None,
 ) -> Any:
-    """Compile the workflow with an injectable classifier and checkpoint saver."""
+    """编译工作流，并支持注入分类器与检查点保存器。"""
 
     graph = StateGraph(RunState)
     graph.add_node("clean_records", _clean_node)

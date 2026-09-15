@@ -1,4 +1,4 @@
-"""Weekly VOC report generation from persisted classified feedback."""
+"""根据已持久化的分类反馈生成 VOC 周报。"""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from app.services.aggregate import aggregate_feedback
 
 
 def _period(end_date: str | date | None) -> tuple[str, str, str]:
+    # 周报使用含首尾日期的 7 天窗口；SQL 结束条件采用次日零点，避免漏掉当天记录。
     if end_date is None:
         end = date.today()
     elif isinstance(end_date, date):
@@ -32,6 +33,7 @@ def generate_weekly_report(repository: Any, *, end_date: str | date | None = Non
         (row.get("sku") or "未知 SKU", row.get("category") or "其他/待人工确认", row.get("subcategory") or "其他")
         for row in rows
     )
+    # 重复投诉率按同一 SKU + 类别 + 子类出现多条反馈计算，反映问题集中度。
     repeated = sum(count for count in issue_counts.values() if count > 1)
     report = {
         "period": period,

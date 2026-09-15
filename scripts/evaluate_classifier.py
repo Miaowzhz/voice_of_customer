@@ -1,4 +1,4 @@
-"""Evaluate classifier predictions against the manually labeled benchmark.
+"""将分类器预测结果与人工标注基准集进行评估。
 
 Examples:
     python scripts/evaluate_classifier.py --mode keyword
@@ -22,7 +22,7 @@ from app.services.cleaning import load_feedback_file
 
 
 def keyword_predict(record: dict[str, Any]) -> FeedbackClassification:
-    """Offline smoke predictor for evaluator plumbing without an API key."""
+    """无需 API 密钥即可运行评估流程的离线冒烟预测器。"""
 
     text = str(record.get("text", ""))
     sku = str(record.get("sku", ""))

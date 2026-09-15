@@ -1,4 +1,4 @@
-"""SQLite repository for run logs, feedback records and Issues."""
+"""用于保存运行日志、反馈记录和 Issue 的 SQLite 仓储。"""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ def _now() -> str:
 
 
 class SQLiteRepository:
-    """Small Upsert repository suitable for the Demo and local tests."""
+    """适用于演示和本地测试的小型 Upsert 仓储。"""
 
     def __init__(self, database: str | Path = "voc.db") -> None:
         self.database = str(database)
-        # FastAPI may serve requests on worker threads; SQLite is still used
-        # as a single-process Demo store, so allow that access pattern here.
+        # FastAPI 可能在线程中处理请求；演示环境仍是单进程 SQLite，因此允许跨线程
+        # 使用连接。多实例部署时应换成共享数据库。
         self.connection = sqlite3.connect(self.database, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self._initialize()
@@ -147,6 +147,7 @@ class SQLiteRepository:
                     feedback_count, evidence_json, suggested_action, owner, status, run_id, updated_at)
                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(issue_key) DO UPDATE SET
+                    -- 同一 run 重放时覆盖数量，跨 run 才累加，避免重复上传放大统计。
                     feedback_count=CASE
                         WHEN issues.run_id = excluded.run_id THEN excluded.feedback_count
                         ELSE issues.feedback_count + excluded.feedback_count

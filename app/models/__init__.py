@@ -1,1 +1,1 @@
-"""Serializable domain models."""
+"""可序列化的领域模型。"""

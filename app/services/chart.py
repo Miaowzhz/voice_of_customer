@@ -1,4 +1,4 @@
-"""Chart rendering for feedback distributions."""
+"""反馈类型分布图渲染服务。"""
 
 from __future__ import annotations
 
@@ -15,13 +15,12 @@ def write_distribution_summary(summary: dict[str, Any], output_path: str | Path)
 
 
 def render_pie_chart(summary: dict[str, Any], output_path: str | Path) -> Path:
-    """Render a PNG pie chart from an aggregation summary."""
+    """根据聚合摘要渲染 PNG 饼图。"""
 
     import matplotlib.pyplot as plt
 
-    # macOS has Chinese fonts available, while Matplotlib's default DejaVu
-    # Sans does not contain CJK glyphs. Keep a portable fallback list so the
-    # generated demo chart renders Chinese labels without tofu boxes.
+    # macOS 通常自带中文字体，而 Matplotlib 默认的 DejaVu Sans 不含中文字符。
+    # 保留可移植的字体回退列表，确保示例图中的中文标签不会显示为方框。
     plt.rcParams["font.sans-serif"] = [
         "Heiti SC", "Hiragino Sans GB", "Arial Unicode MS", "DejaVu Sans"
     ]

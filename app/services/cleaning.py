@@ -1,7 +1,7 @@
-"""Feedback ingestion and deterministic cleaning helpers.
+"""反馈导入与确定性清洗辅助方法。
 
-The module deliberately keeps cleaning deterministic and independent from the
-LLM so that the same input file always produces the same normalized records.
+本模块刻意让清洗过程保持确定性并独立于 LLM，
+确保相同输入文件始终生成相同的标准化记录。
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ DEFAULT_TIMEZONE = "Asia/Shanghai"
 
 @dataclass(frozen=True)
 class CleaningFailure:
-    """One input row that could not be normalized."""
+    """一条无法标准化的输入记录。"""
 
     row_number: int
     reason: str
@@ -32,7 +32,7 @@ class CleaningFailure:
 
 @dataclass(frozen=True)
 class CleaningResult:
-    """Output of :func:`clean_records`."""
+    """``clean_records`` 的输出。"""
 
     records: list[dict[str, Any]]
     failures: list[CleaningFailure]
@@ -41,7 +41,7 @@ class CleaningResult:
 
 
 def calculate_run_id(file_path: str | Path) -> str:
-    """Return the stable SHA-256 run ID for a file's bytes."""
+    """根据文件字节内容返回稳定的 SHA-256 运行 ID。"""
 
     digest = sha256()
     with Path(file_path).open("rb") as handle:
@@ -51,10 +51,10 @@ def calculate_run_id(file_path: str | Path) -> str:
 
 
 def load_feedback_file(file_path: str | Path) -> list[dict[str, Any]]:
-    """Load CSV or XLSX input and return plain dictionaries.
+    """读取 CSV 或 XLSX 输入并返回普通字典。
 
-    CSV is read as UTF-8 with BOM support. XLSX support is delegated to
-    pandas/openpyxl, which is listed in ``requirements.txt``.
+    CSV 按支持 BOM 的 UTF-8 编码读取；XLSX 交由 pandas/openpyxl 处理，
+    相关依赖已列在 ``requirements.txt`` 中。
     """
 
     path = Path(file_path)
@@ -74,7 +74,7 @@ def load_feedback_file(file_path: str | Path) -> list[dict[str, Any]]:
 
 
 def normalize_sku(value: Any) -> str:
-    """Normalize spacing and common SKU separators without changing Chinese text."""
+    """统一空白字符和常见 SKU 分隔符，不改变中文文本。"""
 
     text = str(value or "").strip().lower()
     text = re.sub(r"[\u3000\s]+", " ", text)
@@ -84,7 +84,7 @@ def normalize_sku(value: Any) -> str:
 
 
 def mask_sensitive(text: Any) -> str:
-    """Mask common contact identifiers before text is persisted or sent to LLM."""
+    """在文本持久化或发送给 LLM 前遮盖常见联系方式。"""
 
     value = str(text or "")
     value = re.sub(r"(?<!\d)1[3-9]\d{9}(?!\d)", "[手机号]", value)
@@ -113,10 +113,10 @@ def clean_records(
     timezone_name: str = DEFAULT_TIMEZONE,
     max_text_length: int = 4000,
 ) -> CleaningResult:
-    """Clean, normalize and de-duplicate feedback rows.
+    """清洗、标准化并去重反馈记录。
 
-    Invalid rows are isolated in ``failures``. Duplicate IDs keep the first
-    valid occurrence, making repeated uploads safe for an Upsert repository.
+    无效记录会单独放入 ``failures``；重复 ID 保留第一条有效记录，
+    使重复上传可以安全地写入 Upsert 仓储。
     """
 
     source_rows = list(rows)
@@ -157,7 +157,7 @@ def clean_records(
 
 
 def records_to_frame(records: Iterable[dict[str, Any]]) -> pd.DataFrame:
-    """Create a stable-column DataFrame for persistence or export."""
+    """创建列顺序稳定的 DataFrame，用于持久化或导出。"""
 
     columns = [
         "feedback_id", "text", "sanitized_text", "sku", "channel",

@@ -1,4 +1,4 @@
-"""Build stable, deduplicated Issue candidates from classified feedback."""
+"""根据已分类反馈构建稳定且去重的 Issue 候选。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def build_issue_candidates(
     records: Iterable[dict[str, Any]],
     classifications: Iterable[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Merge feedback with the same normalized SKU/category/subcategory."""
+    """合并标准化后 SKU、类别和子类相同的反馈。"""
 
     records_by_id = {row["feedback_id"]: row for row in records}
     groups: defaultdict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)

@@ -1,1 +1,1 @@
-"""HTTP and Feishu webhook adapters."""
+"""HTTP 与飞书回调适配器。"""

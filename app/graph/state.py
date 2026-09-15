@@ -1,4 +1,4 @@
-"""Serializable state carried through one VOC analysis run."""
+"""一次 VOC 分析运行过程中传递的可序列化状态。"""
 
 from __future__ import annotations
 

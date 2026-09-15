@@ -1,1 +1,1 @@
-"""Deterministic data and integration services."""
+"""确定性数据处理与集成服务。"""

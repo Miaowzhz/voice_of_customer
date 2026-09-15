@@ -1,7 +1,7 @@
-"""Run the deterministic cleaning and aggregation pipeline on mock data.
+"""在模拟数据上运行确定性清洗与聚合流水线。
 
-This is the first executable pipeline milestone. It uses the human benchmark
-labels as stand-in classifications until the LangChain classifier is added.
+这是第一个可执行的流水线里程碑。在接入 LangChain 分类器前，
+暂时使用人工基准标签作为分类结果。
 """
 
 from __future__ import annotations

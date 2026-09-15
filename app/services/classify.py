@@ -1,4 +1,4 @@
-"""LangChain-backed structured classification service."""
+"""基于 LangChain 的结构化分类服务。"""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def load_system_prompt(
     prompt_path: str | Path = PROMPT_PATH,
     taxonomy_path: str | Path = TAXONOMY_PATH,
 ) -> str:
-    """Load the instructions and inject the versioned taxonomy context."""
+    """读取分类说明并注入带版本的分类体系上下文。"""
 
     prompt = Path(prompt_path).read_text(encoding="utf-8")
     taxonomy = yaml.safe_load(Path(taxonomy_path).read_text(encoding="utf-8"))
@@ -55,7 +55,7 @@ def load_system_prompt(
 
 
 def build_chat_model(model_name: str | None = None) -> Any:
-    """Create an OpenAI-compatible ChatModel lazily."""
+    """延迟创建兼容 OpenAI 接口的 ChatModel。"""
 
     from langchain_openai import ChatOpenAI
 
@@ -68,6 +68,7 @@ def build_chat_model(model_name: str | None = None) -> Any:
 
 
 def _structured_chain(model: Any, prompt: str) -> Any:
+    # 使用结构化输出，让模型响应直接映射到 Pydantic 契约，避免下游解析散文。
     messages = ChatPromptTemplate.from_messages([
         ("system", prompt),
         ("human", "请分析以下反馈：\n反馈 ID：{feedback_id}\nSKU：{sku}\n渠道：{channel}\n内容：{text}"),
@@ -82,7 +83,7 @@ def classify_one(
     max_attempts: int = 3,
     prompt_path: str | Path = PROMPT_PATH,
 ) -> ClassificationResult:
-    """Classify one cleaned record and enforce review gates deterministically."""
+    """分类一条已清洗记录，并确定性地执行复核门槛。"""
 
     chain = _structured_chain(model, load_system_prompt(prompt_path))
     last_error: Exception | None = None
@@ -101,8 +102,10 @@ def classify_one(
                 needs_human_review=requires_human_review(output),
             )
         except (ValidationError, ValueError, TypeError) as exc:
+            # 输出结构错误可通过重试修复；每次重试仍受同一契约约束。
             last_error = exc
-        except Exception as exc:  # provider/network errors are retryable
+        except Exception as exc:  # 供应商或网络错误可以重试
+            # 超时、限流等供应商错误也隔离在单条反馈内，避免整批失败。
             last_error = exc
     raise RuntimeError(
         f"分类失败 feedback_id={record.get('feedback_id', '')}, attempts={max_attempts}: {last_error}"
@@ -116,7 +119,7 @@ def classify_records(
     max_attempts: int = 3,
     on_result: Callable[[ClassificationResult], None] | None = None,
 ) -> tuple[list[ClassificationResult], list[ClassificationFailure]]:
-    """Classify records one by one, isolating failures so a batch can continue."""
+    """逐条分类记录并隔离失败项，使批量处理可以继续。"""
 
     successes: list[ClassificationResult] = []
     failures: list[ClassificationFailure] = []

@@ -1,4 +1,4 @@
-"""Deterministic aggregation for feedback summaries and charts."""
+"""用于反馈摘要和图表的确定性聚合服务。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def aggregate_feedback(
     *,
     category_field: str = "category",
 ) -> dict[str, Any]:
-    """Aggregate category, SKU, channel and issue candidate metrics.
+    """聚合类别、SKU、渠道和 Issue 候选指标。
 
     The returned ``category_distribution`` is directly consumable by the pie
     chart renderer. Counts use valid, cleaned records as the denominator.

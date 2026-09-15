@@ -1,1 +1,1 @@
-"""VOC Agent application package."""
+"""VOC Agent 应用包。"""

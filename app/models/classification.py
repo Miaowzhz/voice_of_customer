@@ -1,4 +1,4 @@
-"""Pydantic contract for one feedback classification."""
+"""单条反馈分类的 Pydantic 契约。"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ Severity = Literal["低", "中", "高"]
 
 
 class FeedbackClassification(BaseModel):
-    """The only model output accepted by the pipeline."""
+    """流水线唯一接受的模型输出格式。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -42,6 +42,6 @@ class FeedbackClassification(BaseModel):
 
 
 def requires_human_review(result: FeedbackClassification) -> bool:
-    """Apply deterministic review gates after the model response."""
+    """在模型响应后应用确定性的复核门槛。"""
 
     return result.needs_human_review or result.confidence < 0.75

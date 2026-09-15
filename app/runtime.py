@@ -1,4 +1,4 @@
-"""Runtime bridge from Feishu events to LangGraph executions."""
+"""连接飞书事件与 LangGraph 执行过程的运行时桥接层。"""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ def _single_feedback_row(event: dict[str, Any]) -> dict[str, Any]:
     order_match = re.search(r"(?:订单号|订单|order[_ -]?id)\s*[=:：]\s*([^\s]+)", text, re.I)
     content_match = re.search(r"(?:内容|问题|反馈)\s*[=:：]\s*(.+)$", text)
     message_id = event.get("message_id") or event.get("event_id") or text
+    # 消息事件 ID 比文本内容稳定，适合作为单条反馈的幂等输入。
     return {
         "feedback_id": sha256(str(message_id).encode("utf-8")).hexdigest()[:24],
         "text": content_match.group(1).strip() if content_match else text,
@@ -38,7 +39,7 @@ def _single_feedback_row(event: dict[str, Any]) -> dict[str, Any]:
 
 @dataclass
 class RunService:
-    """Create and execute runs asynchronously while keeping a queryable future."""
+    """异步创建并执行运行任务，同时保留可查询的任务句柄。"""
 
     repository: Any
     graph_factory: GraphFactory
@@ -48,9 +49,10 @@ class RunService:
     futures: dict[str, Future] = field(default_factory=dict)
 
     def submit_event(self, event: dict[str, Any]) -> str:
-        """Create a run from a normalized Feishu event and submit it in background."""
+        """根据归一化的飞书事件创建运行任务，并提交到后台执行。"""
 
         if event.get("file_key"):
+    # 批量文件的运行编号按文件字节计算；同文件重传会复用同一批次。
             if self.file_downloader is None:
                 raise RuntimeError("批量文件事件需要配置 file_downloader")
             target = Path("artifacts/incoming") / (event.get("file_name") or f"{event['file_key']}.bin")
@@ -60,6 +62,7 @@ class RunService:
             source_type = "batch"
             source_ref = str(input_path)
         else:
+            # 单条消息没有文件内容，因此对标准化后的消息字段做稳定哈希。
             row = _single_feedback_row(event)
             canonical = json.dumps(row, ensure_ascii=False, sort_keys=True).encode("utf-8")
             run_id = sha256(canonical).hexdigest()
@@ -75,14 +78,15 @@ class RunService:
                 "receive_id_type": "chat_id" if event.get("chat_id") else "open_id",
             }
         self.repository.upsert_run(state)
+        # 先落“已接收”状态，再提交后台任务，使机器人立即返回后仍可查询进度。
         self.futures[run_id] = self.executor.submit(self._execute, state)
         return run_id
 
     def _execute(self, state: dict[str, Any]) -> dict[str, Any]:
         graph = self.graph_factory()
         result = graph.invoke(state, {"configurable": {"thread_id": state["run_id"]}})
-        # Keep the runtime authoritative even when the injected graph was
-        # built without a repository (useful for tests and alternate runners).
+        # 即使注入的图没有仓储，也由运行服务补写最终结果，保证不同运行
+        # 方式都能查询到一致的运行、反馈和问题单状态。
         self.repository.upsert_run(result)
         self.repository.upsert_feedback(result.get("records", []), result.get("classifications", []))
         self.repository.upsert_issues(result.get("issue_candidates", []), result["run_id"])

@@ -1,4 +1,4 @@
-"""Feishu message payloads and an injectable notification adapter."""
+"""飞书消息载荷与可注入的通知适配器。"""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class Notifier(Protocol):
 
 @dataclass
 class RecordingNotifier:
-    """Test and local-demo notifier; production can replace it with FeishuClient."""
+    """用于测试和本地演示的通知器；生产环境可替换为 FeishuClient。"""
 
     messages: list[dict[str, Any]] = field(default_factory=list)
 
@@ -41,14 +41,14 @@ class RecordingNotifier:
 
 
 class FeishuAPIError(RuntimeError):
-    """Raised when a Feishu Open API call returns a non-success response."""
+    """飞书开放平台 API 调用返回非成功结果时抛出。"""
 
 
 class FeishuClient:
-    """Minimal Feishu Open API client with injectable httpx transport.
+    """支持注入 httpx 传输层的最小飞书开放平台 API 客户端。
 
-    The client keeps credentials out of payloads and caches the tenant token
-    for the lifetime of the process. Tests can pass ``httpx.MockTransport``.
+    客户端不会把凭据放入业务载荷，并在进程生命周期内缓存租户令牌。
+    测试时可以传入 ``httpx.MockTransport``。
     """
 
     def __init__(

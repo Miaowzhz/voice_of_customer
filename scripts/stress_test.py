@@ -1,4 +1,4 @@
-"""Run the deterministic pipeline against 1000 synthetic feedback rows."""
+"""在 1000 条合成反馈记录上运行确定性流水线。"""
 
 from __future__ import annotations
 
