@@ -1,5 +1,8 @@
 """FastAPI application entry point."""
 
-from app.api.feishu_webhook import create_app
+import os
 
-app = create_app()
+from app.api.feishu_webhook import create_app
+from app.repositories.sqlite import SQLiteRepository
+
+app = create_app(repository=SQLiteRepository(os.getenv("VOC_DATABASE", "voc.db")))

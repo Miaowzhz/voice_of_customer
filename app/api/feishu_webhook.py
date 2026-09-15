@@ -93,7 +93,7 @@ class FeishuEventHandler:
         return {"code": 0, "accepted": False, "reason": "unsupported message"}
 
 
-def create_app(handler: FeishuEventHandler | None = None) -> FastAPI:
+def create_app(handler: FeishuEventHandler | None = None, repository: Any | None = None) -> FastAPI:
     app = FastAPI(title="VOC Agent API", version="0.1.0")
     event_handler = handler or FeishuEventHandler(
         verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN", "")
@@ -109,5 +109,14 @@ def create_app(handler: FeishuEventHandler | None = None) -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/runs/{run_id}")
+    async def run_status(run_id: str) -> dict[str, Any]:
+        if repository is None:
+            raise HTTPException(status_code=404, detail="run repository is not configured")
+        row = repository.fetch_run(run_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        return dict(row)
 
     return app

@@ -31,7 +31,7 @@ python scripts/evaluate_classifier.py --mode keyword
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-将飞书事件订阅地址配置为 `/webhooks/feishu`。当前接入层已经支持 URL challenge、文本反馈、文件事件、运行指令识别、事件去重和健康检查；真实的文件下载、多维表写入和消息发送通过后续的 `FeishuClient` 配置接入。
+将飞书事件订阅地址配置为 `/webhooks/feishu`。当前接入层已经支持 URL challenge、文本反馈、文件事件、运行指令识别、事件去重和健康检查；`FeishuClient` 已封装租户令牌、消息发送、文件下载和多维表记录 Upsert，配置凭证后即可连接真实飞书环境。
 
 ## 主要解决的痛点
 
