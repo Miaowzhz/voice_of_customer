@@ -6,6 +6,17 @@
 
 第 1 版分类规则见 [config/taxonomy.yaml](./config/taxonomy.yaml)，人工标注基准集见 [data/benchmark_50.csv](./data/benchmark_50.csv)。
 
+## 本地运行数据基线
+
+安装依赖后，可以先运行确定性的数据处理链路：
+
+```bash
+pip install -r requirements.txt
+python scripts/seed_mock.py
+```
+
+脚本会完成 mock 数据清洗、基准标签合并、类型统计，并在 `artifacts/mock_run/` 生成清洗结果、统计 JSON、运行日志和反馈类型饼图。当前脚本使用人工标注基准集代替 LLM 分类，便于先验证数据链路和图表口径。
+
 ## 主要解决的痛点
 
 ### 1. 客户反馈入口分散
