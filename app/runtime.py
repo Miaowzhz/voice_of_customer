@@ -121,7 +121,16 @@ class RunService:
                 state["artifact_dir"] = str(self.artifact_root / state["run_id"])
                 state["counters"] = {"input_count": len(rows)}
                 self.repository.upsert_run(state)
-                self._send_text(state, f"已收到 {len(rows)} 条产品反馈，正在分析，完成后返回摘要和饼图。\nrun_id：{state['run_id']}")
+                product = next((str(row.get("sku", "")).strip() for row in rows if row.get("sku")), "未标注产品")
+                self._send_text(state, (
+                    "✅ 已接收产品反馈\n"
+                    f"产品：{product}\n"
+                    f"反馈数量：{len(rows)} 条\n"
+                    "处理状态：分析中\n\n"
+                    "正在完成数据清洗、问题分类、占比统计和饼图生成。\n"
+                    "分析完成后，我会在本会话发送结果，请稍候。\n\n"
+                    f"运行编号：{state['run_id']}"
+                ))
             return self._execute(state)
         except Exception as exc:
             # 导入和图执行异常必须落盘并通知，不能只留在线程 Future 中。

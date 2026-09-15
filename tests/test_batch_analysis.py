@@ -150,6 +150,8 @@ class BatchRuntimeTests(unittest.TestCase):
         self.assertEqual(self.repository.fetch_report(run_id)["delivery_status"], "sent")
         self.assertEqual(self.feishu.images, [("chat1", "img-report", "chat_id")])
         self.assertIn("主要问题与建议", self.feishu.messages[-1][1])
+        self.assertIn("✅ 已接收产品反馈", self.feishu.messages[0][1])
+        self.assertIn("反馈数量：5 条", self.feishu.messages[0][1])
         self.assertEqual(self.service.submit_event(event), run_id)
         self.assertEqual(len(self.calls), 3)
         client = TestClient(create_app(repository=self.repository))

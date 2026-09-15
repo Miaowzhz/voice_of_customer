@@ -46,23 +46,31 @@ def format_analysis_report(report: dict[str, Any]) -> str:
     """输出飞书文本摘要，限制证据长度以保持报告可读。"""
 
     lines = [
-        f"产品反馈分析：{report['product']}",
-        f"反馈：{report['input_count']} 条；分类成功：{report['classified_count']} 条",
-        f"待复核：{report['review_count']} 条；失败：{report['failure_count']} 条；重复：{report['duplicate_count']} 条",
-        "", "反馈类型分布：",
+        "✅ 产品反馈分析完成",
+        f"产品：{report['product']}",
+        "",
+        "结果概览",
+        f"• 本次反馈：{report['input_count']} 条",
+        f"• 已完成分类：{report['classified_count']} 条",
+        f"• 待人工复核：{report['review_count']} 条",
+        f"• 处理失败：{report['failure_count']} 条",
+        f"• 重复记录：{report['duplicate_count']} 条",
+        "",
+        "反馈类型分布",
     ]
     for item in report["category_distribution"]:
-        lines.append(f"• {item['category']}：{item['count']} 条（{item['ratio']:.1f}%）")
+        lines.append(f"• {item['category']}：{item['count']} 条，占比 {item['ratio']:.1f}%")
     sentiments = report["sentiment_counts"]
-    lines.extend(["", "情感分布：" + "，".join(f"{label} {count} 条" for label, count in sentiments.items()), "", "主要问题与建议："])
+    lines.extend(["", "情感分布：" + "，".join(f"{label} {count} 条" for label, count in sentiments.items()), "", "主要问题与建议"])
     for i, item in enumerate(report["top_issues"][:3], 1):
         evidence = str(item.get("evidence", [""])[0])[:100]
         lines.extend([
             f"{i}. {item['subcategory']}（{item['count']} 条）",
             f"典型反馈：{evidence}",
-            f"建议：{item['suggested_action'][:180]}；建议负责：{item['suggested_owner']}",
+            f"处理建议：{item['suggested_action'][:180]}",
+            f"建议负责人：{item['suggested_owner']}",
         ])
-    lines.extend(["", report["statistics_note"], f"run_id：{report['run_id']}"])
+    lines.extend(["", f"统计口径：{report['statistics_note']}", f"运行编号：{report['run_id']}", "饼图将在下一条消息发送。"])
     return "\n".join(lines)
 
 
