@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
+
+from langchain_core.runnables import RunnableLambda
 
 from app.models.classification import FeedbackClassification, requires_human_review
+from app.services.classify import _structured_chain, classify_one
 from scripts.evaluate_classifier import evaluate, keyword_predict
 
 
@@ -51,6 +55,44 @@ class EvaluatorTests(unittest.TestCase):
         report = evaluate(rows, keyword_predict)
         self.assertEqual(report["total"], 1)
         self.assertEqual(report["category_accuracy"], 1.0)
+
+
+class StructuredOutputTests(unittest.TestCase):
+    def test_uses_configured_json_mode(self) -> None:
+        class CaptureModel:
+            def __init__(self):
+                self.method = None
+
+            def with_structured_output(self, schema, **kwargs):
+                self.method = kwargs.get("method")
+                return self
+
+            def __call__(self, value):
+                return value
+
+        model = CaptureModel()
+        with patch.dict("os.environ", {"LLM_STRUCTURED_OUTPUT_METHOD": "json_mode"}):
+            _structured_chain(model, "测试提示词")
+        self.assertEqual(model.method, "json_mode")
+
+    def test_partial_model_output_falls_back_to_human_review(self) -> None:
+        class PartialModel:
+            def with_structured_output(self, schema, **kwargs):
+                return RunnableLambda(lambda _: {
+                    "category": "其他/待人工确认",
+                    "subcategory": "信息不足",
+                    "evidence": "你好",
+                    "confidence": 0.1,
+                    "needs_human_review": True,
+                })
+
+        with patch.dict("os.environ", {"LLM_STRUCTURED_OUTPUT_METHOD": "json_mode"}):
+            result = classify_one(
+                {"feedback_id": "hello", "text": "你好", "sanitized_text": "你好"},
+                PartialModel(),
+            )
+        self.assertEqual(result.output.category, "其他/待人工确认")
+        self.assertTrue(result.needs_human_review)
 
 
 if __name__ == "__main__":

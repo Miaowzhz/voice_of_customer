@@ -78,7 +78,12 @@ def _structured_chain(model: Any, prompt: str) -> Any:
         ("system", prompt),
         ("human", "请分析以下反馈：\n反馈 ID：{feedback_id}\nSKU：{sku}\n渠道：{channel}\n内容：{text}"),
     ])
-    return messages | model.with_structured_output(FeedbackClassification)
+    method = os.getenv("LLM_STRUCTURED_OUTPUT_METHOD", "").strip()
+    if not method:
+        # DeepSeek 当前不支持默认的 json_schema 响应格式，自动切换为 JSON 模式。
+        base_url = os.getenv("OPENAI_BASE_URL", "").lower()
+        method = "json_mode" if "deepseek.com" in base_url else "json_schema"
+    return messages | model.with_structured_output(FeedbackClassification, method=method)
 
 
 def classify_one(

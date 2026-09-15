@@ -28,20 +28,24 @@ class FeedbackClassification(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    category: Category
-    subcategory: str = Field(min_length=1, max_length=50)
-    sentiment: Sentiment
-    severity: Severity
-    is_actionable: bool
+    category: Category = "其他/待人工确认"
+    subcategory: str = Field(default="信息不足", min_length=1, max_length=50)
+    sentiment: Sentiment = "未知"
+    severity: Severity = "低"
+    is_actionable: bool = False
     sku: str = Field(default="", max_length=200)
-    evidence: str = Field(min_length=1, max_length=300)
-    suggested_owner: str = Field(min_length=1, max_length=50)
-    suggested_action: str = Field(min_length=1, max_length=300)
-    confidence: float = Field(ge=0.0, le=1.0)
-    needs_human_review: bool
+    evidence: str = Field(default="未提供有效证据", min_length=1, max_length=300)
+    suggested_owner: str = Field(default="客服主管", min_length=1, max_length=50)
+    suggested_action: str = Field(default="人工确认", min_length=1, max_length=300)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    needs_human_review: bool = True
 
 
 def requires_human_review(result: FeedbackClassification) -> bool:
     """在模型响应后应用确定性的复核门槛。"""
 
+    # 模型省略字段时使用安全默认值，并强制进入人工复核，避免静默放行。
+    required_fields = set(FeedbackClassification.model_fields)
+    if not required_fields.issubset(result.model_fields_set):
+        return True
     return result.needs_human_review or result.confidence < 0.75

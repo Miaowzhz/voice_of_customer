@@ -20,6 +20,10 @@ def classifier(record: dict) -> FeedbackClassification:
     )
 
 
+def review_classifier(record: dict) -> FeedbackClassification:
+    return classifier(record).model_copy(update={"confidence": 0.6})
+
+
 def payload(text: str) -> dict:
     return {
         "header": {"event_id": "evt-runtime", "event_type": "im.message.receive_v1"},
@@ -89,6 +93,33 @@ class RuntimeTests(unittest.TestCase):
         result = service.wait(run_id, timeout=3)
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["counters"]["input_count"], 1)
+        service.close()
+        repository.close()
+
+    def test_interrupt_is_persisted_and_notified_as_waiting_review(self) -> None:
+        repository = SQLiteRepository(":memory:")
+
+        class FakeFeishu:
+            def __init__(self):
+                self.messages = []
+
+            def send_text(self, receive_id, text, *, receive_id_type):
+                self.messages.append((receive_id, text, receive_id_type))
+
+        feishu = FakeFeishu()
+        service = RunService(
+            repository=repository,
+            graph_factory=lambda: build_graph(classifier=review_classifier),
+            feishu_client=feishu,
+        )
+        run_id = service.submit_event({
+            "event_id": "evt-review-status", "message_id": "om-review-status",
+            "chat_id": "oc-review-status", "text": "反馈 SKU=锅A 内容=锅底有点粘",
+        })
+        result = service.wait(run_id, timeout=3)
+        self.assertTrue(result["__interrupt__"])
+        self.assertEqual(repository.fetch_run(run_id)["status"], "waiting_review")
+        self.assertIn("待人工复核", feishu.messages[0][1])
         service.close()
         repository.close()
 

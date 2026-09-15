@@ -90,6 +90,17 @@ class RunService:
     def _execute(self, state: dict[str, Any]) -> dict[str, Any]:
         graph = self.graph_factory()
         result = graph.invoke(state, {"configurable": {"thread_id": state["run_id"]}})
+        # LangGraph 在人工复核节点会返回 __interrupt__，此时流程已经暂停，
+        # 不是仍在后台执行。补写明确状态，避免飞书和查询接口把它显示为 running。
+        if result.get("__interrupt__"):
+            result = {
+                **result,
+                "status": "waiting_review",
+                "counters": {
+                    **result.get("counters", {}),
+                    "review_count": len(result.get("review_ids", [])),
+                },
+            }
         # 即使注入的图没有仓储，也由运行服务补写最终结果，保证不同运行
         # 方式都能查询到一致的运行、反馈和问题单状态。
         self.repository.upsert_run(result)
@@ -115,6 +126,12 @@ class RunService:
             )
         elif status == "failed":
             text = f"VOC 分析失败\nrun_id：{result.get('run_id', '')}\n请查看运行日志。"
+        elif status == "waiting_review":
+            text = (
+                f"VOC 分析待人工复核\nrun_id：{result.get('run_id', '')}\n"
+                f"待复核：{counters.get('review_count', 0)} 条\n"
+                "运行已暂停，已记录待复核项。"
+            )
         else:
             text = f"VOC 分析状态：{status}\nrun_id：{result.get('run_id', '')}"
         self.feishu_client.send_text(

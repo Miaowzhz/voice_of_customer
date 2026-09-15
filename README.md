@@ -66,6 +66,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
    FEISHU_ENCRYPT_KEY=
    LLM_MODEL=deepseek-v4-flash
    OPENAI_BASE_URL=https://api.deepseek.com
+   LLM_STRUCTURED_OUTPUT_METHOD=json_mode
    OPENAI_API_KEY=xxx
    VOC_DATABASE=voc.db
    ```
