@@ -25,6 +25,14 @@ python scripts/evaluate_classifier.py --mode keyword
 
 配置 `OPENAI_API_KEY` 后，将 `--mode` 改为 `llm`，即可使用 LangChain 结构化模型对 50 条人工标注集进行一级分类、子类和严重程度评估。
 
+## 启动飞书机器人接入层
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+将飞书事件订阅地址配置为 `/webhooks/feishu`。当前接入层已经支持 URL challenge、文本反馈、文件事件、运行指令识别、事件去重和健康检查；真实的文件下载、多维表写入和消息发送通过后续的 `FeishuClient` 配置接入。
+
 ## 主要解决的痛点
 
 ### 1. 客户反馈入口分散

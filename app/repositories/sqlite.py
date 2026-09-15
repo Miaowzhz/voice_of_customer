@@ -164,5 +164,8 @@ class SQLiteRepository:
     def fetch_issue(self, key: str) -> sqlite3.Row | None:
         return self.connection.execute("SELECT * FROM issues WHERE issue_key = ?", (key,)).fetchone()
 
+    def fetch_run(self, run_id: str) -> sqlite3.Row | None:
+        return self.connection.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+
     def close(self) -> None:
         self.connection.close()
