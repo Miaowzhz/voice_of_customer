@@ -6,6 +6,7 @@ from unittest.mock import patch
 from langchain_core.runnables import RunnableLambda
 
 from app.models.classification import FeedbackClassification, requires_human_review
+from app.models.analysis import GradeAnalysis
 from app.services.classify import _structured_chain, classify_one
 from scripts.evaluate_classifier import evaluate, keyword_predict
 
@@ -58,6 +59,16 @@ class EvaluatorTests(unittest.TestCase):
 
 
 class StructuredOutputTests(unittest.TestCase):
+    def test_grade_analysis_uses_structured_output(self) -> None:
+        class CaptureModel:
+            def with_structured_output(self, schema, **kwargs):
+                self.schema = schema
+                return RunnableLambda(lambda _: GradeAnalysis(grade="好", summary="清洁方便", reasons=["易清洁"], improvements=[]))
+
+        from app.services.classify import analyze_grade
+        result = analyze_grade([{"text": "清洗方便", "category": "使用方法与清洁", "subcategory": "清洁方式"}], "好", CaptureModel())
+        self.assertEqual(result.grade, "好")
+
     def test_uses_configured_json_mode(self) -> None:
         class CaptureModel:
             def __init__(self):

@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from app.services.chart import render_pie_chart, write_distribution_summary
+from app.services.chart import write_distribution_summary
 from app.services.cleaning import mask_sensitive
 
 
@@ -36,9 +36,11 @@ def build_analysis_report(state: dict[str, Any]) -> dict[str, Any]:
         "failure_count": len(state.get("errors", [])),
         "review_count": len(state.get("review_ids", [])),
         "category_distribution": summary.get("category_distribution", []),
+        "grade_distribution": state.get("grade_distribution", []),
+        "grade_analyses": state.get("grade_analyses", {}),
         "sentiment_counts": dict(sentiments),
         "top_issues": actions,
-        "statistics_note": "占比分母为分类成功的反馈数，包含待人工复核的初步分类；失败项和重复项不计入饼图。",
+        "statistics_note": "等级占比分母为完成等级评价的反馈数；失败项和重复项不计入统计。",
     }
 
 
@@ -70,7 +72,16 @@ def format_analysis_report(report: dict[str, Any]) -> str:
             f"处理建议：{item['suggested_action'][:180]}",
             f"建议负责人：{item['suggested_owner']}",
         ])
-    lines.extend(["", f"统计口径：{report['statistics_note']}", f"运行编号：{report['run_id']}", "饼图将在下一条消息发送。"])
+    if report.get("grade_distribution"):
+        lines.extend(["", "体验等级分布"])
+        lines.extend(f"• {item['grade']}评：{item['count']} 条，占比 {item['ratio']:.1f}%" for item in report["grade_distribution"])
+    for grade, label in (("好", "好评原因"), ("中", "中评改进"), ("差", "差评原因")):
+        analysis = report.get("grade_analyses", {}).get(grade, {})
+        if analysis:
+            lines.extend(["", label, f"{analysis.get('summary', '')}"])
+            lines.extend(f"• {item}" for item in analysis.get("reasons", [])[:3])
+            lines.extend(f"• 建议：{item}" for item in analysis.get("improvements", [])[:3])
+    lines.extend(["", f"统计口径：{report['statistics_note']}", f"运行编号：{report['run_id']}", "客户体验等级饼图和好评词云将在后续消息发送。"])
     return "\n".join(lines)
 
 
@@ -82,7 +93,10 @@ def write_analysis_artifacts(state: dict[str, Any]) -> dict[str, Any]:
     report_path = write_distribution_summary(report, directory / "analysis.json")
     text = format_analysis_report(report)
     (directory / "analysis.md").write_text(text, encoding="utf-8")
-    chart = render_pie_chart({
-        **state["aggregates"], "product": report["product"], "review_count": report["review_count"],
-    }, directory / "feedback_types.png")
-    return {"analysis_report": report, "analysis_text": text, "report_ref": str(report_path), "chart_ref": str(chart)}
+    from app.services.chart import render_grade_pie_chart, render_good_wordcloud
+    grade_chart = render_grade_pie_chart(report["grade_distribution"], report["product"], directory / "grade_distribution.png")
+    labeled = []
+    for record in state.get("records", []):
+        labeled.append({**record, **next((item for item in state.get("classifications", []) if item["feedback_id"] == record["feedback_id"]), {})})
+    wordcloud = render_good_wordcloud([item for item in labeled if item.get("grade") == "好"], directory / "good_wordcloud.png")
+    return {"analysis_report": report, "analysis_text": text, "report_ref": str(report_path), "chart_ref": str(grade_chart), "grade_pie_ref": str(grade_chart), "good_wordcloud_ref": str(wordcloud)}

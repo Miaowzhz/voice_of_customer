@@ -64,3 +64,15 @@ def aggregate_feedback(
         "channel_counts": dict(channel_counts.most_common()),
         "top_issues": top_issues,
     }
+
+
+def grade_distribution(records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """按好、中、差固定顺序统计等级占比，空等级也保留。"""
+
+    rows = list(records)
+    counts = Counter(str(row.get("grade", "中") or "中") for row in rows)
+    total = len(rows)
+    return [
+        {"grade": grade, "count": counts.get(grade, 0), "ratio": round(counts.get(grade, 0) / total * 100, 1) if total else 0.0}
+        for grade in ("好", "中", "差")
+    ]

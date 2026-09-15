@@ -43,6 +43,14 @@ class IssueTests(unittest.TestCase):
 
 
 class RepositoryTests(unittest.TestCase):
+    def test_grade_is_persisted_in_feedback_detail(self) -> None:
+        repo = SQLiteRepository(":memory:")
+        repo.upsert_run({"run_id": "grade-run", "source_type": "batch", "status": "completed", "counters": {"input_count": 1, "classified_count": 1}, "errors": [], "review_ids": []})
+        repo.upsert_feedback([{"feedback_id": "grade-1", "run_id": "grade-run", "text": "很好", "sanitized_text": "很好", "sku": "锅A", "channel": "测试", "created_at": "2026-09-15 10:00:00"}], [{"feedback_id": "grade-1", "category": "其他/待人工确认", "subcategory": "未知类别", "grade": "好", "sentiment": "正面", "severity": "低", "evidence": "很好", "confidence": 0.9, "needs_human_review": False}])
+        row = repo.connection.execute("SELECT grade FROM feedback WHERE feedback_id='grade-1'").fetchone()
+        self.assertEqual(row["grade"], "好")
+        repo.close()
+
     def test_upsert_is_idempotent_and_accumulates_issue(self) -> None:
         repo = SQLiteRepository(":memory:")
         state = {

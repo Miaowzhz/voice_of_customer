@@ -61,11 +61,12 @@ class SQLiteRepository:
                 sanitized_text TEXT NOT NULL,
                 sku TEXT NOT NULL,
                 channel TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                order_id TEXT NOT NULL DEFAULT '',
-                category TEXT,
-                subcategory TEXT,
-                sentiment TEXT,
+                    created_at TEXT NOT NULL,
+                    order_id TEXT NOT NULL DEFAULT '',
+                    category TEXT,
+                    subcategory TEXT,
+                    grade TEXT NOT NULL DEFAULT '中',
+                    sentiment TEXT,
                 severity TEXT,
                 evidence TEXT,
                 confidence REAL,
@@ -96,6 +97,9 @@ class SQLiteRepository:
             );
             """
         )
+        columns = {row[1] for row in self.connection.execute("PRAGMA table_info(feedback)")}
+        if "grade" not in columns:
+            self.connection.execute("ALTER TABLE feedback ADD COLUMN grade TEXT NOT NULL DEFAULT '中'")
         self.connection.commit()
 
     @_serialized
@@ -138,14 +142,14 @@ class SQLiteRepository:
             self.connection.execute(
                 """
                 INSERT INTO feedback(feedback_id, run_id, text, sanitized_text, sku, channel,
-                    created_at, order_id, category, subcategory, sentiment, severity, evidence,
+                    created_at, order_id, category, subcategory, grade, sentiment, severity, evidence,
                     confidence, needs_human_review, updated_at)
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(feedback_id) DO UPDATE SET
                     run_id=excluded.run_id, text=excluded.text, sanitized_text=excluded.sanitized_text,
                     sku=excluded.sku, channel=excluded.channel, created_at=excluded.created_at,
                     order_id=excluded.order_id, category=excluded.category, subcategory=excluded.subcategory,
-                    sentiment=excluded.sentiment, severity=excluded.severity, evidence=excluded.evidence,
+                    grade=excluded.grade, sentiment=excluded.sentiment, severity=excluded.severity, evidence=excluded.evidence,
                     confidence=excluded.confidence, needs_human_review=excluded.needs_human_review,
                     updated_at=excluded.updated_at
                 """,
@@ -154,6 +158,7 @@ class SQLiteRepository:
                     record.get("sanitized_text", ""), record.get("sku", ""), record.get("channel", "未知"),
                     record.get("created_at", ""), record.get("order_id", ""),
                     classification.get("category"), classification.get("subcategory"),
+                    classification.get("grade", "中"),
                     classification.get("sentiment"), classification.get("severity"),
                     classification.get("evidence"), classification.get("confidence"),
                     int(bool(classification.get("needs_human_review", False))), now,

@@ -21,6 +21,7 @@ Category = Literal[
 ]
 Sentiment = Literal["正面", "中性", "负面", "混合", "未知"]
 Severity = Literal["低", "中", "高"]
+Grade = Literal["好", "中", "差"]
 
 
 class FeedbackClassification(BaseModel):
@@ -39,13 +40,15 @@ class FeedbackClassification(BaseModel):
     suggested_action: str = Field(default="人工确认", min_length=1, max_length=300)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     needs_human_review: bool = True
+    grade: Grade = "中"
 
 
 def requires_human_review(result: FeedbackClassification) -> bool:
     """在模型响应后应用确定性的复核门槛。"""
 
     # 模型省略字段时使用安全默认值，并强制进入人工复核，避免静默放行。
-    required_fields = set(FeedbackClassification.model_fields)
+    # grade 兼容旧分类器的默认值；新模型提示词会显式要求输出该字段。
+    required_fields = set(FeedbackClassification.model_fields) - {"grade"}
     if not required_fields.issubset(result.model_fields_set):
         return True
     return result.needs_human_review or result.confidence < 0.75

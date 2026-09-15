@@ -33,6 +33,7 @@ def classify(record):
         sku=record["sku"], is_actionable=quality, evidence=record["sanitized_text"],
         suggested_owner="品控" if quality else "客服", suggested_action="检查涂层" if quality else "补充清洗指南",
         confidence=0.5 if review else 0.95, needs_human_review=review,
+        grade="差" if quality else "好",
     )
 
 
@@ -49,7 +50,8 @@ class FakeFeishu:
     def upload_image(self, path):
         assert Path(path).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
         self.uploaded = str(path)
-        return "img-report"
+        self.images.append(("uploaded", str(path)))
+        return f"img-report-{len(self.images)}"
 
     def send_image(self, receive_id, image_key, *, receive_id_type):
         self.images.append((receive_id, image_key, receive_id_type))
@@ -144,11 +146,14 @@ class BatchRuntimeTests(unittest.TestCase):
         self.assertNotIn("__interrupt__", result)
         report = result["analysis_report"]
         self.assertEqual((report["input_count"], report["classified_count"], report["review_count"], report["failure_count"], report["duplicate_count"]), (5, 2, 1, 2, 1))
+        self.assertEqual([item["count"] for item in report["grade_distribution"]], [1, 0, 1])
+        self.assertEqual(set(report["grade_analyses"]), {"好", "中", "差"})
         self.assertEqual([item["ratio"] for item in report["category_distribution"]], [50.0, 50.0])
         self.assertEqual(len(result["issue_candidates"]), 1)
         self.assertEqual(self.repository.fetch_run(run_id)["source_type"], "batch")
         self.assertEqual(self.repository.fetch_report(run_id)["delivery_status"], "sent")
-        self.assertEqual(self.feishu.images, [("chat1", "img-report", "chat_id")])
+        sent_images = [item for item in self.feishu.images if item[0] == "chat1"]
+        self.assertEqual(len(sent_images), 2)
         self.assertIn("主要问题与建议", self.feishu.messages[-1][1])
         self.assertIn("✅ 已接收产品反馈", self.feishu.messages[0][1])
         self.assertIn("反馈数量：5 条", self.feishu.messages[0][1])
@@ -165,7 +170,7 @@ class BatchRuntimeTests(unittest.TestCase):
         result = self.service.wait(run_id, timeout=10)
         self.assertEqual(result["analysis_report"]["classified_count"], 1)
         self.assertEqual(self.feishu.tables[0]["view_id"], "vew1")
-        self.assertEqual(len(self.feishu.images), 1)
+        self.assertEqual(len([item for item in self.feishu.images if item[0] == "chat1"]), 2)
 
     def test_xlsx_attachment_runs_end_to_end(self):
         path = Path(self.directory.name) / "反馈.xlsx"
@@ -176,7 +181,7 @@ class BatchRuntimeTests(unittest.TestCase):
         run_id = self.service.submit_event({"message_id": "excel1", "chat_id": "chat1", "file_key": "file1", "local_file_path": str(path)})
         result = self.service.wait(run_id, timeout=10)
         self.assertEqual(result["analysis_report"]["classified_count"], 1)
-        self.assertEqual(len(self.feishu.images), 1)
+        self.assertEqual(len([item for item in self.feishu.images if item[0] == "chat1"]), 2)
 
     def test_invalid_json_is_not_silently_classified_as_feedback(self):
         run_id = self.service.submit_event({"message_id": "bad1", "chat_id": "chat1", "text": '{"feedbacks": ['})
@@ -203,7 +208,7 @@ class BatchRuntimeTests(unittest.TestCase):
         rows = self.repository.list_feedback()
         self.assertEqual(len(rows), 2)
         self.assertNotEqual(rows[0]["feedback_id"], rows[1]["feedback_id"])
-        self.assertEqual({image[0] for image in self.feishu.images}, {"chat0", "chat1"})
+        self.assertEqual({image[0] for image in self.feishu.images if image[0] in {"chat0", "chat1"}}, {"chat0", "chat1"})
 
 
 class FeishuBatchTransportTests(unittest.TestCase):

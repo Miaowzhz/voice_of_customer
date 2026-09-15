@@ -14,6 +14,11 @@ class RunState(TypedDict, total=False):
     input_rows: list[dict[str, Any]]
     records: list[dict[str, Any]]
     classifications: list[dict[str, Any]]
+    grade_analyses: dict[str, dict[str, Any]]
+    grade_distribution: list[dict[str, Any]]
+    good_analysis: dict[str, Any]
+    middle_analysis: dict[str, Any]
+    bad_analysis: dict[str, Any]
     review_ids: list[str]
     review_decisions: dict[str, dict[str, Any]]
     aggregates: dict[str, Any]
@@ -23,6 +28,8 @@ class RunState(TypedDict, total=False):
     review_policy: Literal["pause", "report"]
     analysis_report: dict[str, Any]
     analysis_text: str
+    grade_pie_ref: str
+    good_wordcloud_ref: str
     report_ref: str
     notification_payload: dict[str, Any]
     errors: list[dict[str, Any]]
@@ -44,6 +51,8 @@ def initial_state(
         "input_rows": rows,
         "records": [],
         "classifications": [],
+        "grade_analyses": {},
+        "grade_distribution": [],
         "review_ids": [],
         "review_decisions": {},
         "aggregates": {},

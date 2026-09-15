@@ -143,3 +143,26 @@ def classify_records(
         except RuntimeError as exc:
             failures.append(ClassificationFailure(feedback_id, str(exc), max_attempts))
     return successes, failures
+
+
+def analyze_grade(records: list[dict[str, Any]], grade: str, model: Any) -> Any:
+    """调用同一模型总结一个等级的原因和改进方向。"""
+
+    from app.models.analysis import GradeAnalysis
+    from langchain_core.prompts import ChatPromptTemplate
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """你是客户反馈洞察分析员。只输出符合结构化契约的结果。
+好评需要总结客户认可的具体原因；中评需要指出体验卡点和可执行改进；差评需要说明核心原因、风险和优先处理方向。
+所有结论必须能由反馈证据支持，不得编造数据，不得回显手机号、地址、姓名和完整订单号。"""),
+        ("human", "目标等级：{grade}\n反馈数量：{count}\n反馈明细：\n{feedbacks}"),
+    ])
+    method = os.getenv("LLM_STRUCTURED_OUTPUT_METHOD", "").strip()
+    if not method:
+        method = "json_mode" if "deepseek.com" in os.getenv("OPENAI_BASE_URL", "").lower() else "json_schema"
+    chain = prompt | model.with_structured_output(GradeAnalysis, method=method)
+    evidence = "\n".join(
+        f"- {record.get('sanitized_text', record.get('text', ''))[:500]}（类别：{record.get('category', '未知')} / {record.get('subcategory', '未知')}）"
+        for record in records
+    )
+    return chain.invoke({"grade": grade, "count": len(records), "feedbacks": evidence or "暂无该等级反馈"})

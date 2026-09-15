@@ -127,7 +127,7 @@ class RunService:
                     f"产品：{product}\n"
                     f"反馈数量：{len(rows)} 条\n"
                     "处理状态：分析中\n\n"
-                    "正在完成数据清洗、问题分类、占比统计和饼图生成。\n"
+                    "正在完成数据清洗、好中差等级评价、分级原因分析、等级饼图和好评词云生成。\n"
                     "分析完成后，我会在本会话发送结果，请稍候。\n\n"
                     f"运行编号：{state['run_id']}"
                 ))
@@ -182,8 +182,9 @@ class RunService:
         if result.get("analysis_report"):
             text_sent = self._send_text(result, result["analysis_text"])
             try:
-                image_key = self.feishu_client.upload_image(result["chart_ref"])
-                self.feishu_client.send_image(target["receive_id"], image_key, receive_id_type=target.get("receive_id_type", "open_id"))
+                for image_ref in (result["grade_pie_ref"], result["good_wordcloud_ref"]):
+                    image_key = self.feishu_client.upload_image(image_ref)
+                    self.feishu_client.send_image(target["receive_id"], image_key, receive_id_type=target.get("receive_id_type", "open_id"))
                 self.repository.set_report_delivery(result["run_id"], "sent" if text_sent else "partial", "" if text_sent else "摘要发送失败")
             except Exception as exc:
                 # 分析成功和消息投递失败分开记录，上传图片失败不覆盖分析结果。

@@ -8,7 +8,7 @@ from app.api.feishu_webhook import create_app
 from app.graph.builder import build_graph
 from app.repositories.sqlite import SQLiteRepository
 from app.runtime import RunService
-from app.services.classify import build_chat_model, classify_one
+from app.services.classify import analyze_grade, build_chat_model, classify_one
 from app.services.feishu import FeishuClient
 
 load_dotenv()
@@ -33,9 +33,18 @@ def llm_classifier(record: dict) -> object:
     return classify_one(record, _model).output
 
 
+def llm_grade_analyzer(records: list[dict], grade: str) -> object:
+    """使用同一模型总结指定等级的原因和改进方向。"""
+
+    global _model
+    if _model is None:
+        _model = build_chat_model()
+    return analyze_grade(records, grade, _model)
+
+
 run_service = RunService(
     repository=repository,
-    graph_factory=lambda: build_graph(classifier=llm_classifier),
+    graph_factory=lambda: build_graph(classifier=llm_classifier, grade_analyzer=llm_grade_analyzer),
     file_downloader=(
         lambda event, target: _feishu_client.download_message_resource(
             event["message_id"], event["file_key"], target

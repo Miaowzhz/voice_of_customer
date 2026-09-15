@@ -11,7 +11,7 @@ from langgraph.types import interrupt
 
 from app.graph.state import RunState
 from app.models.classification import FeedbackClassification, requires_human_review
-from app.services.aggregate import aggregate_feedback
+from app.services.aggregate import aggregate_feedback, grade_distribution
 from app.services.analysis import write_analysis_artifacts
 from app.services.cleaning import clean_records, mask_sensitive
 from app.services.feishu import Notifier, completion_card
@@ -19,6 +19,7 @@ from app.services.issues import build_issue_candidates
 
 
 Classifier = Callable[[dict[str, Any]], FeedbackClassification]
+GradeAnalyzer = Callable[[list[dict[str, Any]], str], Any]
 
 
 def _clean_node(state: RunState) -> dict[str, Any]:
@@ -117,6 +118,7 @@ def _aggregate_node(state: RunState) -> dict[str, Any]:
     return {
         "status": "running",
         "aggregates": summary,
+        "grade_distribution": grade_distribution(labeled),
         "counters": {**state.get("counters", {}), "aggregated_count": summary["total_valid"]},
     }
 
@@ -140,7 +142,47 @@ def _build_issues_node(state: RunState) -> dict[str, Any]:
 def _report_node(state: RunState) -> dict[str, Any]:
     if not state.get("artifact_dir"):
         return {}
+    analyses = {
+        grade: state.get(key, {})
+        for grade, key in (("好", "good_analysis"), ("中", "middle_analysis"), ("差", "bad_analysis"))
+    }
+    state = {**state, "grade_analyses": analyses}
     return write_analysis_artifacts(state)
+
+
+def _grade_analysis_node(state: RunState, grade: str, output_key: str, analyzer: GradeAnalyzer | None) -> dict[str, Any]:
+    records_by_id = {record["feedback_id"]: record for record in state.get("records", [])}
+    rows = []
+    for item in state.get("classifications", []):
+        if item.get("grade", "中") == grade:
+            rows.append({**records_by_id.get(item["feedback_id"], {}), **item})
+    if analyzer is not None and rows:
+        try:
+            result = analyzer(rows, grade)
+            value = result.model_dump() if hasattr(result, "model_dump") else dict(result)
+        except Exception as exc:
+            value = _fallback_grade_analysis(rows, grade)
+            value["error"] = f"等级分析模型调用失败：{exc}"
+    else:
+        value = _fallback_grade_analysis(rows, grade)
+    value["count"] = len(rows)
+    return {output_key: value}
+
+
+def _fallback_grade_analysis(rows: list[dict[str, Any]], grade: str) -> dict[str, Any]:
+    if not rows:
+        return {"grade": grade, "summary": f"本批次暂无{grade}评反馈。", "reasons": [], "improvements": []}
+    counts: dict[str, int] = {}
+    for row in rows:
+        label = f"{row.get('category', '其他')} / {row.get('subcategory', '其他')}"
+        counts[label] = counts.get(label, 0) + 1
+    top = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:3]
+    labels = "、".join(f"{label}（{count}条）" for label, count in top)
+    if grade == "好":
+        return {"grade": grade, "summary": f"好评主要集中在{labels}。", "reasons": [f"反馈中最常出现：{labels}"], "improvements": []}
+    if grade == "中":
+        return {"grade": grade, "summary": f"中评主要集中在{labels}，建议针对这些环节优化体验。", "reasons": [f"反馈中最常出现：{labels}"], "improvements": ["补充使用说明并跟进用户未解决的问题"]}
+    return {"grade": grade, "summary": f"差评主要集中在{labels}，建议优先排查并闭环。", "reasons": [f"反馈中最常出现：{labels}"], "improvements": ["建立专项负责人和处理时限，优先核查高风险问题"]}
 
 
 def _persist_node(state: RunState, repository: Any | None) -> dict[str, Any]:
@@ -163,6 +205,7 @@ def _notify_node(state: RunState, notifier: Notifier | None) -> dict[str, Any]:
 def build_graph(
     *,
     classifier: Classifier | None = None,
+    grade_analyzer: GradeAnalyzer | None = None,
     checkpointer: Any | None = None,
     repository: Any | None = None,
     notifier: Notifier | None = None,
@@ -174,6 +217,9 @@ def build_graph(
     graph.add_node("classify", lambda state: _classify_node(state, classifier))
     graph.add_node("wait_review", _wait_review_node)
     graph.add_node("aggregate", _aggregate_node)
+    graph.add_node("analyze_good", lambda state: _grade_analysis_node(state, "好", "good_analysis", grade_analyzer))
+    graph.add_node("analyze_middle", lambda state: _grade_analysis_node(state, "中", "middle_analysis", grade_analyzer))
+    graph.add_node("analyze_bad", lambda state: _grade_analysis_node(state, "差", "bad_analysis", grade_analyzer))
     graph.add_node("report", _report_node)
     graph.add_node("build_issues", _build_issues_node)
     graph.add_node("persist", lambda state: _persist_node(state, repository))
@@ -187,7 +233,12 @@ def build_graph(
         {"review": "wait_review", "continue": "aggregate", "failed": "finalize"},
     )
     graph.add_edge("wait_review", "aggregate")
-    graph.add_edge("aggregate", "report")
+    graph.add_edge("aggregate", "analyze_good")
+    graph.add_edge("aggregate", "analyze_middle")
+    graph.add_edge("aggregate", "analyze_bad")
+    graph.add_edge("analyze_good", "report")
+    graph.add_edge("analyze_middle", "report")
+    graph.add_edge("analyze_bad", "report")
     graph.add_edge("report", "build_issues")
     graph.add_edge("build_issues", "persist")
     graph.add_edge("persist", "notify")
