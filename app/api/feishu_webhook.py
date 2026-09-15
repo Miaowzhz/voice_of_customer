@@ -5,9 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 import os
+from pathlib import Path
 from typing import Any, Callable
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
+from app.services.inputs import strip_leading_mentions
 
 
 @dataclass
@@ -47,6 +50,18 @@ def parse_event(payload: dict[str, Any]) -> dict[str, Any]:
     message = event.get("message", {})
     message_type = message.get("message_type", "")
     content = _message_content(event)
+    text = str(content.get("text", "") or "")
+    if message_type == "post":
+        # 富文本消息可能把多维表链接和 JSON 代码块放在不同段落中。
+        post = content if "content" in content else content.get("zh_cn", next(iter(content.values()), {}))
+        if isinstance(post, dict):
+            lines = []
+            for paragraph in post.get("content", []):
+                lines.append("".join(
+                    str(item.get("href", "")) if item.get("tag") == "a" else str(item.get("text", ""))
+                    for item in paragraph if item.get("tag") != "at"
+                ))
+            text = "\n".join(lines)
     sender = event.get("sender", {}).get("sender_id", {})
     return {
         "event_id": header.get("event_id") or payload.get("event_id", ""),
@@ -55,7 +70,7 @@ def parse_event(payload: dict[str, Any]) -> dict[str, Any]:
         "message_id": message.get("message_id", ""),
         "chat_id": message.get("chat_id", ""),
         "sender_id": sender.get("open_id") or sender.get("user_id") or "",
-        "text": str(content.get("text", "") or "").strip(),
+        "text": strip_leading_mentions(text, message.get("mentions", [])),
         "file_key": content.get("file_key") or content.get("file_token") or "",
         "file_name": content.get("file_name") or "",
         "raw": payload,
@@ -133,5 +148,19 @@ def create_app(
         if row is None:
             raise HTTPException(status_code=404, detail="run not found")
         return dict(row)
+
+    @app.get("/runs/{run_id}/report")
+    async def analysis_report(run_id: str) -> dict[str, Any]:
+        row = repository.fetch_report(run_id) if repository is not None else None
+        if row is None:
+            raise HTTPException(status_code=404, detail="该批次暂无分析报告")
+        return {"report": json.loads(row["report_json"]), "delivery_status": row["delivery_status"]}
+
+    @app.get("/runs/{run_id}/chart")
+    async def analysis_chart(run_id: str) -> FileResponse:
+        row = repository.fetch_report(run_id) if repository is not None else None
+        if row is None or not Path(row["chart_ref"]).is_file():
+            raise HTTPException(status_code=404, detail="该批次暂无饼图")
+        return FileResponse(row["chart_ref"], media_type="image/png")
 
     return app

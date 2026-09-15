@@ -5,7 +5,7 @@ import unittest
 from fastapi.testclient import TestClient
 import httpx
 
-from app.api.feishu_webhook import EventDeduper, FeishuEventHandler, create_app
+from app.api.feishu_webhook import EventDeduper, FeishuEventHandler, create_app, parse_event
 from app.repositories.sqlite import SQLiteRepository
 from app.services.feishu import FeishuClient
 
@@ -26,6 +26,15 @@ def text_payload(event_id: str, text: str) -> dict:
 
 
 class FeishuApiTests(unittest.TestCase):
+    def test_rich_text_preserves_table_link(self) -> None:
+        link = "https://tenant.feishu.cn/base/base1?table=tbl1"
+        event = parse_event({"event": {"message": {
+            "message_type": "post", "content": {"zh_cn": {"content": [[
+                {"tag": "at", "user_name": "机器人"}, {"tag": "a", "text": "产品反馈", "href": link},
+            ]]}},
+        }}})
+        self.assertEqual(event["text"], link)
+
     def test_challenge_is_echoed(self) -> None:
         client = TestClient(create_app())
         response = client.post("/webhooks/feishu", json={"challenge": "abc", "token": "dev"})

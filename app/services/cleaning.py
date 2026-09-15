@@ -50,27 +50,24 @@ def calculate_run_id(file_path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def load_feedback_file(file_path: str | Path) -> list[dict[str, Any]]:
-    """读取 CSV 或 XLSX 输入并返回普通字典。
+def load_feedback_file(file_path: str | Path, *, single_product: bool = False) -> list[dict[str, Any]]:
+    """读取 Excel、CSV 或 JSON，并统一中英文列名与可选元数据。"""
 
-    CSV 按支持 BOM 的 UTF-8 编码读取；XLSX 交由 pandas/openpyxl 处理，
-    相关依赖已列在 ``requirements.txt`` 中。
-    """
+    from app.services.inputs import decode_feedback_json, normalize_input_rows
 
     path = Path(file_path)
     suffix = path.suffix.lower()
+    if suffix == ".json":
+        rows, product = decode_feedback_json(path.read_text(encoding="utf-8-sig"))
+        return normalize_input_rows(rows, product=product, single_product=single_product)
     if suffix == ".csv":
         frame = pd.read_csv(path, dtype=str, keep_default_na=False, encoding="utf-8-sig")
     elif suffix in {".xlsx", ".xls"}:
-        frame = pd.read_excel(path, dtype=str).fillna("")
+        frame = pd.read_excel(path, dtype=str, keep_default_na=False).fillna("")
     else:
         raise ValueError(f"不支持的文件类型: {path.suffix or '<无扩展名>'}")
 
-    missing = REQUIRED_COLUMNS - set(frame.columns)
-    if missing:
-        missing_text = ", ".join(sorted(missing))
-        raise ValueError(f"缺少必填字段: {missing_text}")
-    return frame.fillna("").to_dict(orient="records")
+    return normalize_input_rows(frame.fillna("").to_dict(orient="records"), single_product=single_product)
 
 
 def normalize_sku(value: Any) -> str:

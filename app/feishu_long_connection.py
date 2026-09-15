@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from hashlib import sha256
 import os
 from pathlib import Path
 from typing import Any, Callable
@@ -12,6 +13,7 @@ from dotenv import load_dotenv
 from lark_oapi.channel import Events, FeishuChannel
 
 from app.runtime import RunService
+from app.services.inputs import strip_leading_mentions
 
 
 load_dotenv()
@@ -38,7 +40,7 @@ def message_to_event(message: Any) -> dict[str, Any]:
         "message_id": getattr(message, "message_id", "") or getattr(message, "id", ""),
         "chat_id": getattr(message, "chat_id", ""),
         "sender_id": getattr(message, "sender_id", ""),
-        "text": str(getattr(message, "content_text", "") or "").strip(),
+        "text": strip_leading_mentions(str(getattr(message, "content_text", "") or ""), getattr(message, "mentions", []) or []),
         "file_key": file_key,
         "file_name": file_name,
         "raw": raw,
@@ -64,14 +66,15 @@ class LongConnectionBridge:
 
         event = message_to_event(message)
         if event["file_key"]:
-            local_path = await self.channel.download_resource_to_file(
-                event["file_key"],
-                resource_type="file",
-                message_id=event["message_id"],
-                dest_dir=self.download_dir,
-                file_name=event["file_name"] or None,
-            )
-            event["local_file_path"] = str(local_path)
+            directory = self.download_dir / sha256(event["message_id"].encode()).hexdigest()[:24]
+            try:
+                local_path = await self.channel.download_resource_to_file(
+                    event["file_key"], resource_type="file", message_id=event["message_id"],
+                    dest_dir=directory, file_name=Path(event["file_name"] or "feedback.bin").name,
+                )
+                event["local_file_path"] = str(local_path)
+            except Exception:
+                event["import_error"] = "文件下载失败，请检查机器人读取消息资源的权限后重新发送附件"
         run_id = self.run_service.submit_event(event)
         if self.on_submit:
             self.on_submit(run_id)

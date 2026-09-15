@@ -12,7 +12,8 @@ from langgraph.types import interrupt
 from app.graph.state import RunState
 from app.models.classification import FeedbackClassification, requires_human_review
 from app.services.aggregate import aggregate_feedback
-from app.services.cleaning import clean_records
+from app.services.analysis import write_analysis_artifacts
+from app.services.cleaning import clean_records, mask_sensitive
 from app.services.feishu import Notifier, completion_card
 from app.services.issues import build_issue_candidates
 
@@ -55,7 +56,10 @@ def _classify_node(state: RunState, classifier: Classifier | None) -> dict[str, 
             item = {
                 "feedback_id": record["feedback_id"],
                 **result.model_dump(),
-                "needs_human_review": requires_human_review(result),
+                # 产品归属来自输入数据，不能被模型猜测的 SKU 覆盖。
+                "sku": record.get("sku", ""),
+                "evidence": mask_sensitive(result.evidence),
+                "needs_human_review": requires_human_review(result) or not record.get("sku"),
             }
             outputs.append(item)
             if item["needs_human_review"]:
@@ -83,6 +87,9 @@ def _review_route(state: RunState) -> str:
     # 路由决策必须由确定性条件控制，不能让模型决定是否绕过人工复核。
     if state.get("status") == "failed":
         return "failed"
+    # 批量分析先报告初步结果，人工复核标记随明细保存，不阻塞整批统计。
+    if state.get("review_policy") == "report":
+        return "continue"
     return "review" if state.get("review_ids") else "continue"
 
 
@@ -122,8 +129,18 @@ def _finalize_node(state: RunState, repository: Any | None = None) -> dict[str, 
 
 
 def _build_issues_node(state: RunState) -> dict[str, Any]:
-    issues = build_issue_candidates(state.get("records", []), state.get("classifications", []))
+    classifications = state.get("classifications", [])
+    if state.get("review_policy") == "report":
+        # 初步分析不直接转成执行任务，避免把不确定或不可行动的结果下派。
+        classifications = [item for item in classifications if not item.get("needs_human_review") and item.get("is_actionable")]
+    issues = build_issue_candidates(state.get("records", []), classifications)
     return {"issue_candidates": issues}
+
+
+def _report_node(state: RunState) -> dict[str, Any]:
+    if not state.get("artifact_dir"):
+        return {}
+    return write_analysis_artifacts(state)
 
 
 def _persist_node(state: RunState, repository: Any | None) -> dict[str, Any]:
@@ -157,6 +174,7 @@ def build_graph(
     graph.add_node("classify", lambda state: _classify_node(state, classifier))
     graph.add_node("wait_review", _wait_review_node)
     graph.add_node("aggregate", _aggregate_node)
+    graph.add_node("report", _report_node)
     graph.add_node("build_issues", _build_issues_node)
     graph.add_node("persist", lambda state: _persist_node(state, repository))
     graph.add_node("notify", lambda state: _notify_node(state, notifier))
@@ -169,7 +187,8 @@ def build_graph(
         {"review": "wait_review", "continue": "aggregate", "failed": "finalize"},
     )
     graph.add_edge("wait_review", "aggregate")
-    graph.add_edge("aggregate", "build_issues")
+    graph.add_edge("aggregate", "report")
+    graph.add_edge("report", "build_issues")
     graph.add_edge("build_issues", "persist")
     graph.add_edge("persist", "notify")
     graph.add_edge("notify", "finalize")

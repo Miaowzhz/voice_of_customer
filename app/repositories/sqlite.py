@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+from functools import wraps
 from pathlib import Path
 import sqlite3
+from threading import RLock
 from typing import Any, Iterable
 
 
@@ -13,11 +15,22 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _serialized(method):
+    """同一连接的读写串行执行，防止后台批次之间交错提交事务。"""
+
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapped
+
+
 class SQLiteRepository:
     """适用于演示和本地测试的小型 Upsert 仓储。"""
 
     def __init__(self, database: str | Path = "voc.db") -> None:
         self.database = str(database)
+        self._lock = RLock()
         # FastAPI 可能在线程中处理请求；演示环境仍是单进程 SQLite，因此允许跨线程
         # 使用连接。多实例部署时应换成共享数据库。
         self.connection = sqlite3.connect(self.database, check_same_thread=False)
@@ -74,10 +87,18 @@ class SQLiteRepository:
                 run_id TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS run_reports (
+                run_id TEXT PRIMARY KEY,
+                report_json TEXT NOT NULL,
+                chart_ref TEXT NOT NULL,
+                delivery_status TEXT NOT NULL DEFAULT 'pending',
+                delivery_error TEXT NOT NULL DEFAULT ''
+            );
             """
         )
         self.connection.commit()
 
+    @_serialized
     def upsert_run(self, state: dict[str, Any]) -> None:
         counters = state.get("counters", {})
         self.connection.execute(
@@ -87,6 +108,7 @@ class SQLiteRepository:
                 errors_json)
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT started_at FROM runs WHERE run_id = ?), ?), ?, ?)
             ON CONFLICT(run_id) DO UPDATE SET
+                source_type=excluded.source_type, source_ref=excluded.source_ref,
                 status=excluded.status, input_count=excluded.input_count,
                 success_count=excluded.success_count, failure_count=excluded.failure_count,
                 review_count=excluded.review_count, finished_at=excluded.finished_at,
@@ -103,6 +125,7 @@ class SQLiteRepository:
         )
         self.connection.commit()
 
+    @_serialized
     def upsert_feedback(
         self,
         records: Iterable[dict[str, Any]],
@@ -138,6 +161,7 @@ class SQLiteRepository:
             )
         self.connection.commit()
 
+    @_serialized
     def upsert_issues(self, issues: Iterable[dict[str, Any]], run_id: str) -> None:
         now = _now()
         for issue in issues:
@@ -164,12 +188,35 @@ class SQLiteRepository:
             )
         self.connection.commit()
 
+    @_serialized
     def fetch_issue(self, key: str) -> sqlite3.Row | None:
         return self.connection.execute("SELECT * FROM issues WHERE issue_key = ?", (key,)).fetchone()
 
+    @_serialized
     def fetch_run(self, run_id: str) -> sqlite3.Row | None:
         return self.connection.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
 
+    @_serialized
+    def save_report(self, state: dict[str, Any]) -> None:
+        self.connection.execute(
+            "INSERT INTO run_reports(run_id,report_json,chart_ref) VALUES(?,?,?) "
+            "ON CONFLICT(run_id) DO UPDATE SET report_json=excluded.report_json,chart_ref=excluded.chart_ref",
+            (state["run_id"], json.dumps(state["analysis_report"], ensure_ascii=False), state["chart_ref"]),
+        )
+        self.connection.commit()
+
+    @_serialized
+    def set_report_delivery(self, run_id: str, status: str, error: str = "") -> None:
+        self.connection.execute(
+            "UPDATE run_reports SET delivery_status=?,delivery_error=? WHERE run_id=?", (status, error, run_id),
+        )
+        self.connection.commit()
+
+    @_serialized
+    def fetch_report(self, run_id: str) -> sqlite3.Row | None:
+        return self.connection.execute("SELECT * FROM run_reports WHERE run_id=?", (run_id,)).fetchone()
+
+    @_serialized
     def list_feedback(self, start_at: str | None = None, end_at: str | None = None) -> list[sqlite3.Row]:
         query = "SELECT * FROM feedback"
         params: list[str] = []
@@ -185,8 +232,10 @@ class SQLiteRepository:
         query += " ORDER BY created_at, feedback_id"
         return list(self.connection.execute(query, params).fetchall())
 
+    @_serialized
     def list_issues(self) -> list[sqlite3.Row]:
         return list(self.connection.execute("SELECT * FROM issues ORDER BY feedback_count DESC, issue_key").fetchall())
 
+    @_serialized
     def close(self) -> None:
         self.connection.close()

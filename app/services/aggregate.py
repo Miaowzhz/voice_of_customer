@@ -17,8 +17,8 @@ def aggregate_feedback(
 ) -> dict[str, Any]:
     """聚合类别、SKU、渠道和 Issue 候选指标。
 
-    The returned ``category_distribution`` is directly consumable by the pie
-    chart renderer. Counts use valid, cleaned records as the denominator.
+    返回的 category_distribution 可直接用于饼图渲染。
+    分母为本次传入的有效记录数量，调用方负责提供分类成功的记录。
     """
 
     rows = list(records)

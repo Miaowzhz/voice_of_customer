@@ -19,6 +19,11 @@ class RunState(TypedDict, total=False):
     aggregates: dict[str, Any]
     issue_candidates: list[dict[str, Any]]
     chart_ref: str | None
+    artifact_dir: str
+    review_policy: Literal["pause", "report"]
+    analysis_report: dict[str, Any]
+    analysis_text: str
+    report_ref: str
     notification_payload: dict[str, Any]
     errors: list[dict[str, Any]]
     counters: dict[str, int]

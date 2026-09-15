@@ -38,6 +38,13 @@ class FakeRunService:
 
 
 class LongConnectionTests(unittest.TestCase):
+    def test_group_json_ignores_leading_bot_mention(self):
+        message = SimpleNamespace(
+            content_text='@反馈机器人 {"feedbacks":[{"text":"粘锅"}]}',
+            mentions=[SimpleNamespace(name="反馈机器人", key="@_user_1")],
+        )
+        self.assertTrue(message_to_event(message)["text"].startswith('{"feedbacks"'))
+
     def test_message_to_event_maps_text_message(self):
         message = SimpleNamespace(
             raw={"header": {"event_id": "evt-1"}}, message_id="om-1", id="om-1",
