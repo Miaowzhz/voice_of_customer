@@ -52,11 +52,16 @@ class RunService:
         """根据归一化的飞书事件创建运行任务，并提交到后台执行。"""
 
         if event.get("file_key"):
-    # 批量文件的运行编号按文件字节计算；同文件重传会复用同一批次。
-            if self.file_downloader is None:
-                raise RuntimeError("批量文件事件需要配置 file_downloader")
-            target = Path("artifacts/incoming") / (event.get("file_name") or f"{event['file_key']}.bin")
-            input_path = self.file_downloader(event, target)
+            # 批量文件的运行编号按文件字节计算；同文件重传会复用同一批次。
+            local_file_path = event.get("local_file_path")
+            if local_file_path:
+                # 长连接可以直接异步下载文件，这里复用已经下载好的本地路径。
+                input_path = Path(local_file_path)
+            else:
+                if self.file_downloader is None:
+                    raise RuntimeError("批量文件事件需要配置 file_downloader")
+                target = Path("artifacts/incoming") / (event.get("file_name") or f"{event['file_key']}.bin")
+                input_path = self.file_downloader(event, target)
             run_id = calculate_run_id(input_path)
             rows = load_feedback_file(input_path)
             source_type = "batch"

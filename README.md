@@ -44,6 +44,72 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 真实环境启动前，复制 [.env.example](./.env.example) 并配置 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_VERIFICATION_TOKEN` 和 `OPENAI_API_KEY`。未配置飞书凭证时，文本事件仍可用于本地接入测试，但文件下载和出站消息不会调用外部 API。
 
+### 飞书机器人配置步骤
+
+1. 在[飞书开放平台](https://open.feishu.cn/)创建“企业自建应用”，进入“添加应用能力”启用“机器人”，记录应用的 `App ID` 和 `App Secret`。应用发布并通过企业管理员审批后，机器人能力才会在企业中生效。[官方配置说明](https://www.feishu.cn/content/425524486655)
+2. 在“权限管理”中申请消息相关权限：接收机器人所在会话的消息、以机器人身份发送消息，以及读取消息中的文件资源。权限名称会随飞书后台版本变化，请在权限搜索框中分别搜索“接收消息”“发送消息”“消息资源”。
+3. 在“事件与回调 → 事件配置”中选择“将事件发送至开发者服务器”，请求地址填写：
+
+   ```text
+   https://你的公网域名/webhooks/feishu
+   ```
+
+   订阅“接收消息”事件（事件标识通常为 `im.message.receive_v1`）。飞书保存地址时会发送 `challenge`，项目会原样返回该值完成地址验证。事件订阅和请求地址的配置入口可参考[飞书官方事件订阅说明](https://www.feishu.cn/content/917351528780--3333)。
+4. 在事件配置页复制 `Verification Token`，填入项目根目录的 `.env`：
+
+   ```bash
+   cp .env.example .env
+   # 编辑 .env，填入真实值
+   FEISHU_APP_ID=cli_xxx
+   FEISHU_APP_SECRET=xxx
+   FEISHU_VERIFICATION_TOKEN=xxx
+   FEISHU_ENCRYPT_KEY=
+   LLM_MODEL=deepseek-v4-flash
+   OPENAI_BASE_URL=https://api.deepseek.com
+   OPENAI_API_KEY=xxx
+   VOC_DATABASE=voc.db
+   ```
+
+   启动前在当前终端加载变量：
+
+   ```bash
+   set -a
+   source .env
+   set +a
+   uvicorn app.main:app --host 0.0.0.0 --port 8000
+   ```
+5. 将机器人添加到测试群，在群内发送一条文本反馈，例如：
+
+   ```text
+   SKU=CJ-001；问题：锅盖密封圈装不上，已经漏汤两次
+   ```
+
+   机器人会先返回受理状态，处理完成后向原会话发送结果。上传 CSV/XLSX 文件时，文件必须包含 `feedback_id`、`text`、`sku`、`channel`、`created_at` 五个字段。
+
+6. 用下面的命令检查服务是否启动：
+
+   ```bash
+   curl http://127.0.0.1:8000/healthz
+   ```
+
+   如果服务在本地运行，需要使用具备公网 HTTPS 地址的反向代理或隧道，将该地址映射到本地 `8000` 端口；飞书后台不能直接访问 `127.0.0.1`。
+
+当前代码校验 `Verification Token`，但没有实现 `Encrypt Key` 加密事件的解密和签名校验，因此事件配置应先使用明文回调模式；启用加密模式前需要补充解密逻辑。机器人发送消息使用飞书的消息 API 和租户访问凭证，具体接口可参考[官方发送消息文档](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create)。
+
+### 使用长连接模式
+
+项目也支持通过飞书官方 Python SDK 建立 WebSocket 长连接。长连接模式不需要公网回调地址，适合本地开发和演示：
+
+```bash
+uv pip install --python .venv/bin/python -r requirements.txt
+set -a
+source .env
+set +a
+python -m app.feishu_long_connection
+```
+
+使用长连接时，在飞书应用的“事件与回调”中将订阅方式切换为“长连接模式”，继续订阅 `im.message.receive_v1`，然后发布应用。长连接进程和 FastAPI 回调进程二选一运行，不能同时消费同一个应用的同一事件，否则会产生重复处理。官方 SDK 的长连接入口和消息模型见[飞书 SDK 文档](https://github.com/larksuite/oapi-sdk-python/blob/v2_main/doc/channel.md)。
+
 ## 主要解决的痛点
 
 ### 1. 客户反馈入口分散

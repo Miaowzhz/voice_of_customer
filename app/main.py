@@ -2,12 +2,16 @@
 
 import os
 
+from dotenv import load_dotenv
+
 from app.api.feishu_webhook import create_app
 from app.graph.builder import build_graph
 from app.repositories.sqlite import SQLiteRepository
 from app.runtime import RunService
 from app.services.classify import build_chat_model, classify_one
 from app.services.feishu import FeishuClient
+
+load_dotenv()
 
 repository = SQLiteRepository(os.getenv("VOC_DATABASE", "voc.db"))
 

@@ -59,12 +59,17 @@ def build_chat_model(model_name: str | None = None) -> Any:
 
     from langchain_openai import ChatOpenAI
 
-    return ChatOpenAI(
-        model=model_name or os.getenv("LLM_MODEL", "gpt-4o-mini"),
-        temperature=0,
-        timeout=45,
-        max_retries=0,
-    )
+    options: dict[str, Any] = {
+        "model": model_name or os.getenv("LLM_MODEL", "gpt-4o-mini"),
+        "temperature": 0,
+        "timeout": 45,
+        "max_retries": 0,
+    }
+    # DeepSeek 使用 OpenAI 兼容协议，通过基础地址切换供应商。
+    base_url = os.getenv("OPENAI_BASE_URL", "").strip()
+    if base_url:
+        options["base_url"] = base_url
+    return ChatOpenAI(**options)
 
 
 def _structured_chain(model: Any, prompt: str) -> Any:
