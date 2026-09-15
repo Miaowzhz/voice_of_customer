@@ -13,6 +13,8 @@ from app.graph.state import RunState
 from app.models.classification import FeedbackClassification, requires_human_review
 from app.services.aggregate import aggregate_feedback
 from app.services.cleaning import clean_records
+from app.services.feishu import Notifier, completion_card
+from app.services.issues import build_issue_candidates
 
 
 Classifier = Callable[[dict[str, Any]], FeedbackClassification]
@@ -115,10 +117,33 @@ def _finalize_node(state: RunState) -> dict[str, Any]:
     return {"status": status}
 
 
+def _build_issues_node(state: RunState) -> dict[str, Any]:
+    issues = build_issue_candidates(state.get("records", []), state.get("classifications", []))
+    return {"issue_candidates": issues}
+
+
+def _persist_node(state: RunState, repository: Any | None) -> dict[str, Any]:
+    if repository is None:
+        return {"counters": {**state.get("counters", {}), "persisted": 0}}
+    repository.upsert_run(state)
+    repository.upsert_feedback(state.get("records", []), state.get("classifications", []))
+    repository.upsert_issues(state.get("issue_candidates", []), state["run_id"])
+    return {"counters": {**state.get("counters", {}), "persisted": 1}}
+
+
+def _notify_node(state: RunState, notifier: Notifier | None) -> dict[str, Any]:
+    payload = completion_card(state)
+    if notifier is not None:
+        notifier.send(payload)
+    return {"notification_payload": payload}
+
+
 def build_graph(
     *,
     classifier: Classifier | None = None,
     checkpointer: Any | None = None,
+    repository: Any | None = None,
+    notifier: Notifier | None = None,
 ) -> Any:
     """Compile the workflow with an injectable classifier and checkpoint saver."""
 
@@ -127,6 +152,9 @@ def build_graph(
     graph.add_node("classify", lambda state: _classify_node(state, classifier))
     graph.add_node("wait_review", _wait_review_node)
     graph.add_node("aggregate", _aggregate_node)
+    graph.add_node("build_issues", _build_issues_node)
+    graph.add_node("persist", lambda state: _persist_node(state, repository))
+    graph.add_node("notify", lambda state: _notify_node(state, notifier))
     graph.add_node("finalize", _finalize_node)
     graph.add_edge(START, "clean_records")
     graph.add_edge("clean_records", "classify")
@@ -136,6 +164,9 @@ def build_graph(
         {"review": "wait_review", "continue": "aggregate", "failed": "finalize"},
     )
     graph.add_edge("wait_review", "aggregate")
-    graph.add_edge("aggregate", "finalize")
+    graph.add_edge("aggregate", "build_issues")
+    graph.add_edge("build_issues", "persist")
+    graph.add_edge("persist", "notify")
+    graph.add_edge("notify", "finalize")
     graph.add_edge("finalize", END)
     return graph.compile(checkpointer=checkpointer or MemorySaver())
