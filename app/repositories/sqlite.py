@@ -92,14 +92,25 @@ class SQLiteRepository:
                 run_id TEXT PRIMARY KEY,
                 report_json TEXT NOT NULL,
                 chart_ref TEXT NOT NULL,
+                wordcloud_ref TEXT NOT NULL DEFAULT '',
                 delivery_status TEXT NOT NULL DEFAULT 'pending',
                 delivery_error TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS conversation_sessions (
+                conversation_key TEXT PRIMARY KEY,
+                receive_id TEXT NOT NULL,
+                receive_id_type TEXT NOT NULL,
+                current_run_id TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
             );
             """
         )
         columns = {row[1] for row in self.connection.execute("PRAGMA table_info(feedback)")}
         if "grade" not in columns:
             self.connection.execute("ALTER TABLE feedback ADD COLUMN grade TEXT NOT NULL DEFAULT '中'")
+        report_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(run_reports)")}
+        if "wordcloud_ref" not in report_columns:
+            self.connection.execute("ALTER TABLE run_reports ADD COLUMN wordcloud_ref TEXT NOT NULL DEFAULT ''")
         self.connection.commit()
 
     @_serialized
@@ -204,9 +215,12 @@ class SQLiteRepository:
     @_serialized
     def save_report(self, state: dict[str, Any]) -> None:
         self.connection.execute(
-            "INSERT INTO run_reports(run_id,report_json,chart_ref) VALUES(?,?,?) "
-            "ON CONFLICT(run_id) DO UPDATE SET report_json=excluded.report_json,chart_ref=excluded.chart_ref",
-            (state["run_id"], json.dumps(state["analysis_report"], ensure_ascii=False), state["chart_ref"]),
+            "INSERT INTO run_reports(run_id,report_json,chart_ref,wordcloud_ref) VALUES(?,?,?,?) "
+            "ON CONFLICT(run_id) DO UPDATE SET report_json=excluded.report_json,chart_ref=excluded.chart_ref,wordcloud_ref=excluded.wordcloud_ref",
+            (
+                state["run_id"], json.dumps(state["analysis_report"], ensure_ascii=False),
+                state.get("chart_ref", ""), state.get("good_wordcloud_ref", ""),
+            ),
         )
         self.connection.commit()
 
@@ -220,6 +234,25 @@ class SQLiteRepository:
     @_serialized
     def fetch_report(self, run_id: str) -> sqlite3.Row | None:
         return self.connection.execute("SELECT * FROM run_reports WHERE run_id=?", (run_id,)).fetchone()
+
+    @_serialized
+    def save_session(self, conversation_key: str, receive_id: str, receive_id_type: str, run_id: str) -> None:
+        self.connection.execute(
+            "INSERT INTO conversation_sessions(conversation_key,receive_id,receive_id_type,current_run_id,updated_at) "
+            "VALUES(?,?,?,?,datetime('now')) ON CONFLICT(conversation_key) DO UPDATE SET "
+            "receive_id=excluded.receive_id,receive_id_type=excluded.receive_id_type,current_run_id=excluded.current_run_id,updated_at=excluded.updated_at",
+            (conversation_key, receive_id, receive_id_type, run_id),
+        )
+        self.connection.commit()
+
+    @_serialized
+    def fetch_session(self, conversation_key: str) -> sqlite3.Row | None:
+        return self.connection.execute("SELECT * FROM conversation_sessions WHERE conversation_key=?", (conversation_key,)).fetchone()
+
+    @_serialized
+    def clear_session(self, conversation_key: str) -> None:
+        self.connection.execute("DELETE FROM conversation_sessions WHERE conversation_key=?", (conversation_key,))
+        self.connection.commit()
 
     @_serialized
     def list_feedback(self, start_at: str | None = None, end_at: str | None = None) -> list[sqlite3.Row]:

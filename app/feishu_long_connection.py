@@ -14,6 +14,7 @@ from lark_oapi.channel import Events, FeishuChannel
 
 from app.runtime import RunService
 from app.services.inputs import strip_leading_mentions
+from app.services.interaction import parse_command
 
 
 load_dotenv()
@@ -65,6 +66,9 @@ class LongConnectionBridge:
         """处理一条标准化消息，下载文件后提交后台分析。"""
 
         event = message_to_event(message)
+        if parse_command(event["text"]):
+            self.run_service.handle_command(event)
+            return
         if event["file_key"]:
             directory = self.download_dir / sha256(event["message_id"].encode()).hexdigest()[:24]
             try:

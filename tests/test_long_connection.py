@@ -31,10 +31,14 @@ class FakeChannel:
 class FakeRunService:
     def __init__(self):
         self.events = []
+        self.commands = []
 
     def submit_event(self, event):
         self.events.append(event)
         return "run-1"
+
+    def handle_command(self, event):
+        self.commands.append(event)
 
 
 class LongConnectionTests(unittest.TestCase):
@@ -68,6 +72,19 @@ class LongConnectionTests(unittest.TestCase):
         asyncio.run(bridge.handle_message(message))
         self.assertEqual(service.events[0]["local_file_path"].endswith("feedback.csv"), True)
         self.assertEqual(channel.downloads[0][0], "file-1")
+
+    def test_command_is_routed_without_starting_analysis(self):
+        channel = FakeChannel()
+        service = FakeRunService()
+        bridge = LongConnectionBridge(channel, service)
+        message = SimpleNamespace(
+            raw={"header": {"event_id": "evt-help"}}, message_id="om-help", id="om-help",
+            raw_content_type="text", content=SimpleNamespace(kind="text", file_key=""),
+            content_text="/帮助", chat_id="oc-1", sender_id="ou-1", resources=[],
+        )
+        asyncio.run(bridge.handle_message(message))
+        self.assertEqual(len(service.commands), 1)
+        self.assertEqual(service.events, [])
 
     def test_build_channel_uses_websocket_transport(self):
         service = FakeRunService()

@@ -123,6 +123,36 @@ class RuntimeTests(unittest.TestCase):
         service.close()
         repository.close()
 
+    def test_session_commands_query_status_and_reset(self) -> None:
+        repository = SQLiteRepository(":memory:")
+
+        class FakeFeishu:
+            def __init__(self):
+                self.messages = []
+
+            def send_text(self, receive_id, text, *, receive_id_type):
+                self.messages.append((receive_id, text, receive_id_type))
+
+        feishu = FakeFeishu()
+        service = RunService(
+            repository=repository,
+            graph_factory=lambda: build_graph(classifier=classifier),
+            feishu_client=feishu,
+        )
+        event = {
+            "event_id": "evt-command", "message_id": "om-command", "chat_id": "oc-command",
+            "text": "反馈 SKU=锅A 内容=锅底有点粘",
+        }
+        run_id = service.submit_event(event)
+        service.wait(run_id, timeout=3)
+        service.handle_command({"chat_id": "oc-command", "text": "/状态"})
+        self.assertIn("运行状态：completed", feishu.messages[-1][1])
+        service.handle_command({"chat_id": "oc-command", "text": "/新会话"})
+        service.handle_command({"chat_id": "oc-command", "text": "/状态"})
+        self.assertIn("还没有分析记录", feishu.messages[-1][1])
+        service.close()
+        repository.close()
+
 
 if __name__ == "__main__":
     unittest.main()

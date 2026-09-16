@@ -16,6 +16,8 @@ from typing import Any, Callable
 from app.graph.state import initial_state
 from app.services.cleaning import load_feedback_file
 from app.services.inputs import bitable_source, decode_feedback_json, json_message, normalize_input_rows
+from app.services.analysis import format_analysis_report
+from app.services.interaction import help_text, parse_command
 
 
 FileDownloader = Callable[[dict[str, Any], Path], Path]
@@ -74,10 +76,99 @@ class RunService:
         # 同一消息事件的重复投递复用任务；重新发送文件则产生独立的分析批次。
         with self._submit_lock:
             if run_id in self.futures:
+                self._remember_session(event, run_id)
                 return run_id
             self.repository.upsert_run(state)
+            self._remember_session(event, run_id)
             self.futures[run_id] = self.executor.submit(self._execute_event, state, dict(event))
         return run_id
+
+    @staticmethod
+    def _conversation_key(event: dict[str, Any]) -> str:
+        if event.get("chat_id"):
+            return f"chat:{event['chat_id']}"
+        return f"user:{event.get('sender_id', '')}"
+
+    def _remember_session(self, event: dict[str, Any], run_id: str) -> None:
+        receive_id = event.get("chat_id") or event.get("sender_id")
+        if not receive_id:
+            return
+        self.repository.save_session(
+            self._conversation_key(event), receive_id,
+            "chat_id" if event.get("chat_id") else "open_id", run_id,
+        )
+
+    def handle_command(self, event: dict[str, Any]) -> None:
+        """处理 Hermes 风格的会话命令，命令本身不进入分析图。"""
+
+        command = parse_command(event.get("text", ""))
+        if command is None:
+            return
+        target = event.get("chat_id") or event.get("sender_id")
+        if not target:
+            return
+        receive_id_type = "chat_id" if event.get("chat_id") else "open_id"
+        if command.name == "help":
+            self._send_command_text(target, receive_id_type, help_text())
+            return
+        if command.name == "new_session":
+            self.repository.clear_session(self._conversation_key(event))
+            self._send_command_text(target, receive_id_type, "✅ 已新建会话\n请发送新的产品反馈文件或多维表格链接。")
+            return
+        run_id = command.argument or self._session_run_id(event)
+        if not run_id:
+            self._send_command_text(target, receive_id_type, "当前会话还没有分析记录，请先发送产品反馈数据。\n\n" + help_text())
+            return
+        if command.name == "status":
+            self._send_status(target, receive_id_type, run_id)
+        elif command.name == "report":
+            self._send_saved_report(target, receive_id_type, run_id)
+
+    def _session_run_id(self, event: dict[str, Any]) -> str:
+        session = self.repository.fetch_session(self._conversation_key(event))
+        return str(session["current_run_id"]) if session else ""
+
+    def _send_command_text(self, receive_id: str, receive_id_type: str, text: str) -> None:
+        if self.feishu_client is None:
+            return
+        try:
+            self.feishu_client.send_text(receive_id, text, receive_id_type=receive_id_type)
+        except Exception:
+            logger.exception("飞书命令响应发送失败")
+
+    def _send_status(self, receive_id: str, receive_id_type: str, run_id: str) -> None:
+        row = self.repository.fetch_run(run_id)
+        if row is None:
+            self._send_command_text(receive_id, receive_id_type, f"未找到运行记录：{run_id}")
+            return
+        self._send_command_text(receive_id, receive_id_type, (
+            f"运行状态：{row['status']}\n"
+            f"反馈：{row['input_count']} 条，分类成功：{row['success_count']} 条\n"
+            f"待复核：{row['review_count']} 条，失败：{row['failure_count']} 条\n"
+            f"run_id：{run_id}"
+        ))
+
+    def _send_saved_report(self, receive_id: str, receive_id_type: str, run_id: str) -> None:
+        row = self.repository.fetch_report(run_id)
+        if row is None:
+            status = self.repository.fetch_run(run_id)
+            message = "该运行尚未生成报告，请稍后再试。" if status else f"未找到运行记录：{run_id}"
+            self._send_command_text(receive_id, receive_id_type, message)
+            return
+        report = json.loads(row["report_json"])
+        text_sent = False
+        try:
+            self.feishu_client.send_text(receive_id, format_analysis_report(report), receive_id_type=receive_id_type)
+            text_sent = True
+            for image_ref in (row["chart_ref"], row["wordcloud_ref"]):
+                if image_ref and Path(image_ref).is_file():
+                    image_key = self.feishu_client.upload_image(image_ref)
+                    self.feishu_client.send_image(receive_id, image_key, receive_id_type=receive_id_type)
+            self.repository.set_report_delivery(run_id, "resent", "")
+        except Exception as exc:
+            logger.exception("飞书历史报告发送失败 run_id=%s", run_id)
+            self.repository.set_report_delivery(run_id, "partial" if text_sent else "failed", str(exc))
+            self._send_command_text(receive_id, receive_id_type, f"报告已保存，但图片发送失败。\nrun_id：{run_id}")
 
     def _load_event_rows(self, event: dict[str, Any], run_id: str) -> tuple[list[dict[str, Any]], str, str]:
         if event.get("import_error"):
@@ -128,7 +219,7 @@ class RunService:
                     f"反馈数量：{len(rows)} 条\n"
                     "处理状态：分析中\n\n"
                     "正在完成数据清洗、好中差等级评价、分级原因分析、等级饼图和好评词云生成。\n"
-                    "分析完成后，我会在本会话发送结果，请稍候。\n\n"
+                    "分析完成后，我会在本会话发送结果，请稍候。\n可发送 /状态 或 /报告 查看进度和结果。\n\n"
                     f"运行编号：{state['run_id']}"
                 ))
             return self._execute(state)

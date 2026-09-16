@@ -11,6 +11,7 @@ from typing import Any, Callable
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from app.services.inputs import strip_leading_mentions
+from app.services.interaction import parse_command
 
 
 @dataclass
@@ -98,7 +99,7 @@ class FeishuEventHandler:
         if not self.deduper.first_seen(event["event_id"]):
             return {"code": 0, "message": "duplicate event ignored"}
         if event["message_type"] in {"text", "post"} and event["text"]:
-            if event["text"].startswith(("查询", "复核", "生成周报")):
+            if parse_command(event["text"]):
                 if self.on_command:
                     self.on_command(event)
                 return {"code": 0, "accepted": True, "kind": "command"}
@@ -124,6 +125,8 @@ def create_app(
     if run_service is not None:
         if event_handler.on_feedback is None:
             event_handler.on_feedback = run_service.submit_event
+        if event_handler.on_command is None and hasattr(run_service, "handle_command"):
+            event_handler.on_command = run_service.handle_command
 
     @app.post("/webhooks/feishu")
     async def feishu_webhook(
