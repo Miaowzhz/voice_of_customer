@@ -73,9 +73,9 @@ class RuntimeTests(unittest.TestCase):
         run_id = service.submit_event(event)
         result = service.wait(run_id, timeout=3)
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(len(feishu.messages), 1)
-        self.assertEqual(feishu.messages[0][0], "oc-notify")
-        self.assertEqual(feishu.messages[0][2], "chat_id")
+        self.assertEqual(len(feishu.messages), 2)
+        self.assertEqual(feishu.messages[-1][0], "oc-notify")
+        self.assertEqual(feishu.messages[-1][2], "chat_id")
         service.close()
         repository.close()
 
@@ -119,7 +119,7 @@ class RuntimeTests(unittest.TestCase):
         result = service.wait(run_id, timeout=3)
         self.assertTrue(result["__interrupt__"])
         self.assertEqual(repository.fetch_run(run_id)["status"], "waiting_review")
-        self.assertIn("待人工复核", feishu.messages[0][1])
+        self.assertIn("待人工复核", feishu.messages[-1][1])
         service.close()
         repository.close()
 

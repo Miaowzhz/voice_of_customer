@@ -1,6 +1,7 @@
 """FastAPI 应用入口。"""
 
 import os
+from threading import Lock
 
 from dotenv import load_dotenv
 
@@ -22,24 +23,30 @@ if _app_id and _app_secret:
     _feishu_client = FeishuClient(_app_id, _app_secret)
 
 _model = None
+_model_lock = Lock()
+
+
+def _get_model():
+    """并发批量首次调用时只初始化一次模型客户端。"""
+
+    global _model
+    if _model is None:
+        with _model_lock:
+            if _model is None:
+                _model = build_chat_model()
+    return _model
 
 
 def llm_classifier(record: dict) -> object:
     """延迟构建模型，使 API 启动不依赖模型凭据。"""
 
-    global _model
-    if _model is None:
-        _model = build_chat_model()
-    return classify_one(record, _model).output
+    return classify_one(record, _get_model()).output
 
 
 def llm_grade_analyzer(records: list[dict], grade: str) -> object:
     """使用同一模型总结指定等级的原因和改进方向。"""
 
-    global _model
-    if _model is None:
-        _model = build_chat_model()
-    return analyze_grade(records, grade, _model)
+    return analyze_grade(records, grade, _get_model())
 
 
 run_service = RunService(

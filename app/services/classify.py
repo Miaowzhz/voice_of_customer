@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import os
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -32,6 +33,7 @@ class ClassificationResult:
     needs_human_review: bool
 
 
+@lru_cache(maxsize=8)
 def load_system_prompt(
     prompt_path: str | Path = PROMPT_PATH,
     taxonomy_path: str | Path = TAXONOMY_PATH,

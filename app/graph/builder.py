@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+import os
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -46,10 +48,12 @@ def _classify_node(state: RunState, classifier: Classifier | None) -> dict[str, 
                 "error": "未注入 classifier；生产运行需要配置 LangChain 模型",
             }],
         }
+    records = state.get("records", [])
     outputs: list[dict[str, Any]] = []
     review_ids: list[str] = []
     failures = list(state.get("errors", []))
-    for record in state.get("records", []):
+
+    def classify_record(record: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         try:
             result = classifier(record)
             if not isinstance(result, FeedbackClassification):
@@ -62,14 +66,28 @@ def _classify_node(state: RunState, classifier: Classifier | None) -> dict[str, 
                 "evidence": mask_sensitive(result.evidence),
                 "needs_human_review": requires_human_review(result) or not record.get("sku"),
             }
+            return item, None
+        except Exception as exc:
+            return None, str(exc)
+
+    # 分类请求是独立的网络调用，使用有上限的并发可以显著缩短批量处理时间。
+    # 通过环境变量控制并发，避免超过模型供应商的限流阈值。
+    try:
+        concurrency = max(1, int(os.getenv("LLM_CLASSIFY_CONCURRENCY", "5")))
+    except ValueError:
+        concurrency = 5
+    with ThreadPoolExecutor(max_workers=min(concurrency, max(1, len(records)))) as pool:
+        results = list(pool.map(classify_record, records))
+    for record, (item, error) in zip(records, results):
+        if item is not None:
             outputs.append(item)
             if item["needs_human_review"]:
                 review_ids.append(record["feedback_id"])
-        except Exception as exc:
+        else:
             failures.append({
                 "node": "classify",
                 "feedback_id": record.get("feedback_id", ""),
-                "error": str(exc),
+                "error": error or "未知分类错误",
             })
     return {
         "status": "running" if outputs else "failed",
